@@ -111,11 +111,12 @@ def run_tests():
         parser=FakeIntentParser(discount_intent),
         db=db,
     )
-    print(f"Billing manager request output:\n{res_route['answer']}")
-    assert "approval request #REQ-" in res_route["answer"].lower() or "#REQ-" in res_route["answer"]
+    route_msg = res_route.get("answer") or res_route.get("reason", "")
+    print(f"Billing manager request output:\n{route_msg}")
+    assert "approval request #REQ-" in route_msg.lower() or "#REQ-" in route_msg
     
     import re
-    m = re.search(r"#REQ-(\d+)", res_route["answer"])
+    m = re.search(r"#REQ-(\d+)", route_msg)
     req_num = m.group(1) if m else "1"
     req_id = f"REQ-{req_num}"
     print(f"Extracted Pending Request ID: {req_id}")

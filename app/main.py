@@ -174,11 +174,13 @@ def chat_endpoint(
                     reason=f"Discount of {getattr(parsed_intent, 'pct', 0)}% exceeds role ceiling.",
                     session=db,
                 )
-                status_code_audit = "executed"
+                status_code_audit = "refused"
+                msg_txt = f"Request exceeds role ceiling. It has been routed to Admin for review as #{appr_res['request_id']}."
                 return {
-                    "exit": "answer",
-                    "decision": "ALLOW",
-                    "answer": f"Request exceeds role ceiling. It has been routed to Admin for review as #{appr_res['request_id']}.",
+                    "exit": "refuse",
+                    "decision": "REFUSE",
+                    "reason": msg_txt,
+                    "answer": msg_txt,
                     "approval": appr_res,
                 }
 
@@ -586,7 +588,15 @@ async function sendQuery() {
     const data = await res.json();
 
     if (data.exit === 'refuse') {
-      addMsg('⛔ <b>REFUSED BY POLICY:</b><br>' + escapeHtml(data.reason), 'msg-bot msg-refuse');
+      let content = '⛔ <b>REFUSED BY POLICY:</b><br>' + escapeHtml(data.reason);
+      if (data.reason && data.reason.includes('#REQ-')) {
+        const match = data.reason.match(/#REQ-\d+/);
+        if (match) {
+          const req = match[0].replace('#', '');
+          content += `<br><br><button class="btn-success" style="font-size:12px;padding:4px 10px;" onclick="runPrompt('Approve request #${req}')">Approve as Admin (${req})</button>`;
+        }
+      }
+      addMsg(content, 'msg-bot msg-refuse');
     } else if (data.exit === 'clarify') {
       addMsg('❓ <b>CLARIFICATION REQUIRED:</b><br>' + escapeHtml(data.question), 'msg-bot msg-clarify');
     } else if (data.exit === 'answer') {
