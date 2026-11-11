@@ -55,7 +55,11 @@ class GeminiIntentParser(BaseIntentParser):
         if self.api_key:
             try:
                 from google import genai
-                self.client = genai.Client(api_key=self.api_key)
+                from google.genai import types
+                self.client = genai.Client(
+                    api_key=self.api_key,
+                    http_options=types.HttpOptions(timeout=10000),
+                )
             except Exception:
                 self.client = None
 
@@ -88,13 +92,16 @@ class GeminiIntentParser(BaseIntentParser):
                 question=f"I couldn't clearly parse that instruction. Could you rephrase? ({str(e)})"
             )
         except Exception as e:
-            # If API key is invalid, quota exceeded (429), or network fails, fall back to heuristic parser
+            # If API key is invalid, quota exceeded, deadline exceeded, or network fails, fall back to heuristic parser
             err_msg = str(e)
-            if any(code in err_msg for code in ("API_KEY_INVALID", "400", "403", "404", "429", "RESOURCE_EXHAUSTED", "rate-limits")):
-                if any(code in err_msg for code in ("429", "RESOURCE_EXHAUSTED")):
+            if any(code in err_msg for code in (
+                "API_KEY_INVALID", "400", "403", "404", "429", "500", "503", "504",
+                "RESOURCE_EXHAUSTED", "DEADLINE_EXCEEDED", "rate-limits", "timed out", "timeout"
+            )):
+                if any(code in err_msg for code in ("429", "RESOURCE_EXHAUSTED", "504", "DEADLINE_EXCEEDED")):
                     self._quota_exhausted = True
                 return self._heuristic_fallback(message)
-            return UnsupportedIntent(reason=f"LLM parsing error: {str(e)}")
+            return self._heuristic_fallback(message)
 
     def _heuristic_fallback(self, message: str) -> Intent:
         """Lightweight regex/keyword parser when running without active API key or quota exceeded, supporting English, Telugu, Hinglish."""
