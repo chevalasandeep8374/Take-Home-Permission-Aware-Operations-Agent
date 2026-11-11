@@ -388,912 +388,667 @@ def cancel_endpoint(
         )
 
 
-@app.get("/audit")
-def get_recent_audits(
-    principal: Principal = Depends(get_current_principal),
-    db: Session = Depends(get_db),
-):
-    """Returns recent audit logs for the authenticated hospital tenant."""
-    from app.models import AuditLog
-    ensure_tenant_context(db, principal.hospital_id)
-    logs = db.execute(
-        select(AuditLog)
-        .where(AuditLog.hospital_id == principal.hospital_id)
-        .order_by(AuditLog.id.desc())
-        .limit(12)
-    ).scalars().all()
-    return [
-        {
-            "id": l.id,
-            "time": l.created_at.strftime("%H:%M:%S") if l.created_at else "",
-            "query": l.raw_query,
-            "decision": l.decision,
-            "status": l.status,
-            "reason": l.reason or "",
-            "rows": l.rows_affected or 0,
-        }
-        for l in logs
-    ]
-
-
-# Advanced Dark Antigravity IDE Chat Interface served at GET /
+# Minimal Chat HTML Interface served at GET /
 HTML_CONTENT = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Antigravity • Hexgan AI HMS Agent</title>
+  <title>Hextgen HMS — Operations Agent</title>
   <style>
     :root {
-      --bg-app: #0d0f14;
-      --bg-sidebar: #12151d;
-      --bg-card: #171b26;
-      --bg-card-hover: #1c2230;
-      --bg-input: #151922;
-      --border-subtle: #242938;
-      --border-focus: #3b82f6;
-      --text-main: #e2e8f0;
-      --text-muted: #8b949e;
-      --accent: #2563eb;
-      --accent-hover: #1d4ed8;
-      --accent-cyan: #06b6d4;
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --primary-light: #eff6ff;
+      --sidebar-bg: #0f172a;
+      --sidebar-card: #1e293b;
+      --sidebar-text: #f8fafc;
+      --sidebar-muted: #94a3b8;
+      --border-dark: #334155;
+      --bg: #f1f5f9;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-muted: #64748b;
       --danger: #ef4444;
-      --danger-bg: rgba(239, 68, 68, 0.12);
+      --danger-bg: #fef2f2;
+      --danger-border: #fecaca;
       --success: #10b981;
-      --success-bg: rgba(16, 185, 129, 0.12);
+      --success-bg: #ecfdf5;
+      --success-border: #a7f3d0;
       --warning: #f59e0b;
-      --warning-bg: rgba(245, 158, 11, 0.12);
+      --warning-bg: #fffbeb;
+      --warning-border: #fde68a;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: var(--bg-app);
-      color: var(--text-main);
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    /* Top Menu Bar */
-    .topbar {
-      height: 38px;
-      background: #090b0f;
-      border-bottom: 1px solid var(--border-subtle);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 14px;
-      font-size: 12px;
-      user-select: none;
-    }
-    .topbar-left { display: flex; align-items: center; gap: 14px; }
-    .topbar-title { font-weight: 600; color: #cbd5e1; display: flex; align-items: center; gap: 6px; }
-    .topbar-nav { display: flex; gap: 12px; color: var(--text-muted); }
-    .topbar-nav span:hover { color: var(--text-main); cursor: pointer; }
-    .topbar-crumb { color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
-    .topbar-right { display: flex; align-items: center; gap: 12px; }
-    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); display: inline-block; box-shadow: 0 0 6px var(--success); }
-
-    /* Main 3-Column Layout */
-    .ide-body {
-      flex: 1;
-      display: flex;
-      overflow: hidden;
-      height: calc(100vh - 38px);
-    }
-
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+    
+    /* Layout */
+    .app-layout { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
+    
     /* Left Sidebar */
-    .sidebar {
-      width: 250px;
-      background: var(--bg-sidebar);
-      border-right: 1px solid var(--border-subtle);
-      display: flex;
-      flex-direction: column;
-      user-select: none;
-    }
-    .sidebar-header { padding: 12px; border-bottom: 1px solid var(--border-subtle); }
-    .btn-new-chat {
-      width: 100%;
-      background: #181d28;
-      border: 1px solid var(--border-subtle);
-      color: var(--text-main);
-      padding: 8px 12px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 500;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .btn-new-chat:hover { background: #202636; border-color: #3b82f6; }
+    .sidebar { width: 370px; background: var(--sidebar-bg); color: var(--sidebar-text); display: flex; flex-direction: column; border-right: 1px solid var(--border-dark); padding: 18px; gap: 14px; overflow-y: auto; flex-shrink: 0; }
+    .brand { display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid var(--border-dark); }
+    .brand-title { font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 8px; color: #fff; }
+    .pulse-indicator { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 8px var(--success); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.9); } }
+    
+    /* Persona Card */
+    .persona-card { background: var(--sidebar-card); border-radius: 12px; border: 1px solid var(--border-dark); padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+    .persona-header { display: flex; align-items: center; gap: 12px; }
+    .avatar { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; color: #fff; background: linear-gradient(135deg, #3b82f6, #1d4ed8); flex-shrink: 0; }
+    .persona-meta { flex: 1; min-width: 0; }
+    .persona-name { font-size: 15px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .persona-sub { font-size: 12px; color: var(--sidebar-muted); display: flex; gap: 6px; align-items: center; margin-top: 2px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+    .badge-admin { background: #991b1b; color: #fecaca; }
+    .badge-billing { background: #92400e; color: #fde68a; }
+    .badge-pharmacist { background: #065f46; color: #a7f3d0; }
+    .badge-frontdesk { background: #3730a3; color: #c7d2fe; }
+    .badge-doctor { background: #6b21a8; color: #e9d5ff; }
+    .badge-hospital { background: #334155; color: #cbd5e1; }
+    
+    /* Persona Selector */
+    select.persona-select { width: 100%; padding: 8px 10px; background: #0f172a; border: 1px solid var(--border-dark); border-radius: 8px; color: #f8fafc; font-size: 13px; outline: none; cursor: pointer; }
+    select.persona-select:focus { border-color: var(--primary); }
+    
+    /* Permissions Checklist */
+    .perms-box { background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 10px; border: 1px solid rgba(51, 65, 85, 0.5); font-size: 12px; }
+    .perms-title { font-weight: 600; color: var(--sidebar-muted); text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .perm-item { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; color: #cbd5e1; }
+    .perm-item.denied { color: #94a3b8; text-decoration: line-through; opacity: 0.65; }
+    
+    /* Sidebar Actions */
+    .sidebar-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .side-btn { padding: 9px 12px; border-radius: 8px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid var(--border-dark); background: var(--sidebar-card); color: #f8fafc; transition: all 0.15s ease; display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .side-btn:hover { background: #334155; border-color: #475569; }
+    .side-btn-full { grid-column: span 2; }
+    
+    /* Audit Log Stream */
+    .audit-section { flex: 1; min-height: 180px; display: flex; flex-direction: column; background: var(--sidebar-card); border-radius: 12px; border: 1px solid var(--border-dark); padding: 12px; overflow: hidden; }
+    .audit-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(51, 65, 85, 0.5); }
+    .audit-header span { font-size: 11px; font-weight: 600; color: var(--sidebar-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .audit-feed { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+    .audit-item { padding: 6px 8px; border-radius: 6px; background: rgba(15, 23, 42, 0.5); border-left: 3px solid #3b82f6; display: flex; flex-direction: column; gap: 2px; }
+    .audit-item.refused { border-left-color: var(--danger); }
+    .audit-item.executed { border-left-color: var(--success); }
+    .audit-item.previewed { border-left-color: var(--warning); }
+    .audit-row-top { display: flex; justify-content: space-between; color: var(--sidebar-muted); font-size: 10px; }
+    .audit-row-msg { color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-    .sidebar-scroll {
-      flex: 1;
-      overflow-y: auto;
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 6px; }
-    .persona-select {
-      width: 100%;
-      background: #181d28;
-      color: var(--text-main);
-      border: 1px solid var(--border-subtle);
-      border-radius: 6px;
-      padding: 7px 10px;
-      font-size: 12px;
-      outline: none;
-      cursor: pointer;
-    }
-    .persona-select:focus { border-color: var(--accent); }
-    .persona-card {
-      background: #181d28;
-      border: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      padding: 10px;
-      margin-top: 6px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      font-size: 11px;
-    }
-    .role-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-weight: 600; width: fit-content; text-transform: uppercase; font-size: 10px; }
-    .tag-admin { background: #fee2e2; color: #991b1b; }
-    .tag-billing { background: #fef3c7; color: #92400e; }
-    .tag-pharmacist { background: #dcfce7; color: #166534; }
-    .tag-frontdesk { background: #e0e7ff; color: #3730a3; }
-    .tag-doctor { background: #f3e8ff; color: #6b21a8; }
+    /* Right Main Console */
+    .main-console { flex: 1; display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #fff; }
+    
+    /* Top Navigation */
+    .top-navbar { height: 58px; background: #fff; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; flex-shrink: 0; }
+    .top-breadcrumbs { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); }
+    .top-breadcrumbs b { color: var(--text); }
+    .system-status { display: flex; align-items: center; gap: 14px; font-size: 12px; }
+    .status-tag { display: flex; align-items: center; gap: 6px; color: #475569; background: #f8fafc; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); }
 
-    .chip-list { display: flex; flex-direction: column; gap: 4px; }
-    .preset-item {
-      padding: 7px 10px;
-      background: #181d28;
-      border: 1px solid transparent;
-      border-radius: 6px;
-      font-size: 12px;
-      color: #94a3b8;
-      cursor: pointer;
-      transition: all 0.15s;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .preset-item:hover { background: #202636; color: var(--text-main); border-color: var(--border-subtle); }
-    .preset-te { border-left: 2px solid #10b981; }
+    /* Quick Scenarios Tray */
+    .scenarios-tray { background: #f8fafc; border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+    .scenario-tabs { display: flex; gap: 6px; }
+    .tab-btn { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; background: transparent; color: var(--text-muted); }
+    .tab-btn.active { background: #e2e8f0; color: var(--text); border-color: #cbd5e1; }
+    .chips-container { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { font-size: 12px; padding: 5px 11px; background: #fff; border: 1px solid var(--border); border-radius: 16px; cursor: pointer; color: #334155; transition: all 0.15s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+    .chip:hover { background: #f1f5f9; border-color: #cbd5e1; transform: translateY(-1px); color: var(--primary); }
+    .chip-te { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; }
+    .chip-te:hover { background: #d1fae5; border-color: #6ee7b7; color: #047857; }
+    .chip-sec { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+    .chip-sec:hover { background: #fee2e2; border-color: #fca5a5; }
 
-    /* Center Chat Canvas */
-    .center-canvas {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      background: var(--bg-app);
-      position: relative;
-      overflow: hidden;
-    }
-    .canvas-header {
-      height: 42px;
-      border-bottom: 1px solid var(--border-subtle);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 18px;
-      background: #10131b;
-      font-size: 13px;
-    }
-    .canvas-header-left { display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
-    .canvas-header-left b { color: var(--text-main); }
-    .canvas-tools { display: flex; gap: 8px; }
-    .btn-tool {
-      background: #181d28;
-      border: 1px solid var(--border-subtle);
-      color: #94a3b8;
-      padding: 5px 10px;
-      border-radius: 6px;
-      font-size: 11px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      transition: all 0.15s;
-    }
-    .btn-tool:hover { background: #202636; color: var(--text-main); border-color: #475569; }
+    /* Chat Canvas */
+    .chat-canvas { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; background: #f8fafc; }
+    .msg-wrap { display: flex; gap: 12px; max-width: 88%; }
+    .msg-wrap.user { align-self: flex-end; flex-direction: row-reverse; }
+    .msg-wrap.bot { align-self: flex-start; }
+    .msg-avatar { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; font-weight: 700; color: #fff; }
+    .msg-avatar.user-av { background: var(--primary); }
+    .msg-avatar.bot-av { background: #0f172a; }
+    .bubble { border-radius: 12px; padding: 12px 16px; font-size: 14px; line-height: 1.5; box-shadow: 0 1px 3px rgba(0,0,0,0.04); position: relative; }
+    .bubble.user-bubble { background: var(--primary); color: #fff; border-top-right-radius: 2px; }
+    .bubble.bot-bubble { background: #fff; border: 1px solid var(--border); border-top-left-radius: 2px; width: 100%; }
+    .bubble-meta { font-size: 11px; margin-top: 6px; display: flex; justify-content: space-between; align-items: center; opacity: 0.75; }
+    
+    /* Structured Bot Cards */
+    .status-card { border-radius: 8px; padding: 12px; margin-top: 4px; }
+    .card-refuse { background: var(--danger-bg); border: 1px solid var(--danger-border); color: #991b1b; }
+    .card-refuse h4 { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 13px; font-weight: 700; }
+    .card-clarify { background: var(--warning-bg); border: 1px solid var(--warning-border); color: #92400e; }
+    .card-clarify h4 { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 13px; font-weight: 700; }
+    .card-answer { background: #fff; border-left: 4px solid var(--success); padding: 4px 10px; }
+    
+    /* Preview Modal/Card */
+    .preview-box { background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 16px; margin-top: 8px; }
+    .preview-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .preview-header h4 { font-size: 14px; font-weight: 700; color: #1e40af; display: flex; align-items: center; gap: 6px; }
+    .metrics-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 12px; }
+    .metric-card { background: #fff; border: 1px solid #dbeafe; border-radius: 8px; padding: 8px 12px; }
+    .metric-label { font-size: 10px; font-weight: 600; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; }
+    .metric-value { font-size: 18px; font-weight: 700; color: #1e3a8a; margin-top: 2px; }
+    
+    /* Blast Radius Interactive Guard */
+    .blast-box { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px; margin: 12px 0; color: #991b1b; }
+    .blast-box h5 { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    .blast-input-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+    .blast-input { padding: 6px 10px; border: 2px solid #f87171; border-radius: 6px; font-size: 14px; font-weight: 600; width: 140px; outline: none; background: #fff; }
+    .blast-input:focus { border-color: #dc2626; box-shadow: 0 0 0 3px rgba(220,38,38,0.15); }
 
-    #chat-thread {
-      flex: 1;
-      overflow-y: auto;
-      padding: 20px 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
-      padding-bottom: 140px; /* space for floating capsule */
-    }
+    /* Tables */
+    .diff-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; background: #fff; border-radius: 6px; overflow: hidden; }
+    .diff-table th, .diff-table td { border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; }
+    .diff-table th { background: #f8fafc; font-weight: 600; color: #475569; }
 
-    /* Message Bubbles */
-    .msg-group { display: flex; flex-direction: column; gap: 4px; }
-    .msg-user-row { align-self: flex-end; max-width: 80%; }
-    .msg-user-bubble {
-      background: #1e293b;
-      border: 1px solid #334155;
-      color: #f1f5f9;
-      padding: 12px 16px;
-      border-radius: 12px;
-      border-bottom-right-radius: 2px;
-      font-size: 13.5px;
-      line-height: 1.5;
-    }
-    .msg-user-meta { font-size: 10.5px; color: var(--text-muted); text-align: right; margin-top: 3px; }
+    /* Action Buttons */
+    .btn-group { display: flex; gap: 8px; margin-top: 12px; }
+    button.btn-primary { background: var(--primary); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s ease; }
+    button.btn-primary:hover { background: var(--primary-dark); }
+    button.btn-primary:disabled { background: #94a3b8; cursor: not-allowed; opacity: 0.7; }
+    button.btn-danger { background: var(--danger); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    button.btn-danger:hover { background: #dc2626; }
+    button.btn-action-pill { background: #10b981; color: #fff; border: none; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; }
+    button.btn-action-pill:hover { background: #059669; transform: translateY(-1px); }
 
-    .msg-bot-row { align-self: flex-start; width: 100%; max-width: 900px; }
-    .msg-bot-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border-subtle);
-      border-radius: 12px;
-      padding: 16px 18px;
-      font-size: 13.5px;
-      line-height: 1.55;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-    }
-    .bot-card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid rgba(255,255,255,0.06);
-    }
-    .bot-identity { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 12.5px; color: #cbd5e1; }
-    .decision-badge {
-      font-size: 10.5px;
-      padding: 3px 8px;
-      border-radius: 4px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-    }
-    .badge-allow { background: var(--success-bg); color: var(--success); border: 1px solid rgba(16,185,129,0.3); }
-    .badge-preview { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
-    .badge-refuse { background: var(--danger-bg); color: var(--danger); border: 1px solid rgba(239,68,68,0.3); }
-    .badge-clarify { background: var(--warning-bg); color: var(--warning); border: 1px solid rgba(245,158,11,0.3); }
-
-    .bot-content { color: #e2e8f0; }
-    .code-block {
-      background: #0f1219;
-      border: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      margin: 10px 0;
-      overflow: hidden;
-    }
-    .code-header {
-      background: #141822;
-      padding: 6px 12px;
-      font-size: 11px;
-      color: var(--text-muted);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 1px solid var(--border-subtle);
-    }
-    pre { padding: 10px 14px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; overflow-x: auto; color: #cbd5e1; }
-
-    /* Interactive Preview Card */
-    .preview-box {
-      background: #111827;
-      border: 1px solid #1e3a8a;
-      border-radius: 8px;
-      padding: 14px;
-      margin-top: 10px;
-    }
-    .preview-header { font-weight: 600; color: #93c5fd; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
-    .preview-stats { display: flex; gap: 16px; font-size: 12px; margin-bottom: 10px; }
-    .preview-stat { background: #1e293b; padding: 4px 10px; border-radius: 4px; border: 1px solid #334155; }
-    .blast-box {
-      background: rgba(239,68,68,0.15);
-      border: 1px solid rgba(239,68,68,0.4);
-      border-radius: 6px;
-      padding: 8px 12px;
-      margin: 10px 0;
-      color: #fca5a5;
-      font-size: 12px;
-    }
-    .data-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11.5px; }
-    .data-table th, .data-table td { border: 1px solid #2d3748; padding: 6px 10px; text-align: left; }
-    .data-table th { background: #182030; color: #94a3b8; }
-    .btn-action-row { display: flex; gap: 10px; margin-top: 12px; }
-    .btn-confirm { background: #15803d; color: #fff; border: none; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
-    .btn-confirm:hover { background: #16a34a; }
-    .btn-cancel { background: #991b1b; color: #fff; border: none; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; }
-    .btn-cancel:hover { background: #b91c1c; }
-
-    /* Floating Input Capsule (matches uploaded screenshot) */
-    .capsule-wrapper {
-      position: absolute;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: calc(100% - 48px);
-      max-width: 820px;
-      z-index: 50;
-    }
-    .input-capsule {
-      background: #141722;
-      border: 1px solid #262c3d;
-      border-radius: 16px;
-      padding: 10px 14px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03);
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      transition: all 0.2s ease;
-    }
-    .input-capsule:focus-within {
-      border-color: #3b82f6;
-      box-shadow: 0 8px 28px rgba(0,0,0,0.6), 0 0 0 2px rgba(59,130,246,0.3);
-    }
-    .capsule-input {
-      width: 100%;
-      background: transparent;
-      border: none;
-      outline: none;
-      color: #f8fafc;
-      font-size: 14px;
-      line-height: 1.4;
-      resize: none;
-      min-height: 24px;
-      max-height: 120px;
-    }
-    .capsule-input::placeholder { color: #64748b; }
-    .capsule-toolbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding-top: 4px;
-    }
-    .capsule-tools-left { display: flex; align-items: center; gap: 8px; }
-    .btn-icon {
-      width: 24px;
-      height: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #94a3b8;
-      background: transparent;
-      border: none;
-      cursor: pointer;
-      border-radius: 4px;
-    }
-    .btn-icon:hover { color: #f1f5f9; background: #1e2433; }
-    .model-pill {
-      background: #1a202c;
-      border: 1px solid #2d3748;
-      color: #cbd5e1;
-      padding: 3px 8px;
-      border-radius: 6px;
-      font-size: 11px;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      cursor: pointer;
-    }
-    .capsule-tools-right { display: flex; align-items: center; gap: 8px; }
-    .turbo-pill { font-size: 11px; color: #94a3b8; display: flex; align-items: center; gap: 4px; }
-    .btn-send-circle {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      background: #2563eb;
-      color: #fff;
-      border: none;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .btn-send-circle:hover { background: #3b82f6; transform: scale(1.05); }
-
-    /* Right Inspector Sidebar */
-    .inspector {
-      width: 280px;
-      background: var(--bg-sidebar);
-      border-left: 1px solid var(--border-subtle);
-      display: flex;
-      flex-direction: column;
-      user-select: none;
-    }
-    .inspector-tabs {
-      display: flex;
-      border-bottom: 1px solid var(--border-subtle);
-      background: #0d1017;
-    }
-    .insp-tab {
-      flex: 1;
-      padding: 10px 0;
-      text-align: center;
-      font-size: 11.5px;
-      color: var(--text-muted);
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      transition: all 0.15s;
-    }
-    .insp-tab:hover { color: var(--text-main); }
-    .insp-tab.active { color: #60a5fa; border-bottom-color: #3b82f6; font-weight: 600; background: #131620; }
-
-    .inspector-content {
-      flex: 1;
-      overflow-y: auto;
-      padding: 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .insp-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
-    .task-card {
-      background: #181d28;
-      border: 1px solid var(--border-subtle);
-      border-radius: 6px;
-      padding: 8px 10px;
-      font-size: 11.5px;
-      color: #94a3b8;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-    .task-card b { color: #e2e8f0; font-size: 12px; }
-
-    .audit-list { display: flex; flex-direction: column; gap: 6px; }
-    .audit-entry {
-      background: #181d28;
-      border: 1px solid var(--border-subtle);
-      border-radius: 6px;
-      padding: 8px 10px;
-      font-size: 11px;
-    }
-    .audit-top { display: flex; justify-content: space-between; margin-bottom: 3px; }
-    .audit-time { color: var(--text-muted); font-size: 10px; }
-    .audit-query { color: #cbd5e1; word-break: break-all; margin-top: 2px; font-family: monospace; }
+    /* Input Composer */
+    .composer-bar { background: #fff; border-top: 1px solid var(--border); padding: 14px 20px; display: flex; gap: 10px; align-items: center; }
+    .composer-input-wrap { flex: 1; display: flex; align-items: center; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 24px; padding: 0 16px; transition: all 0.15s; }
+    .composer-input-wrap:focus-within { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(37,99,235,0.15); }
+    .composer-input { width: 100%; border: none; background: transparent; padding: 12px 0; font-size: 14px; outline: none; }
+    .send-btn { width: 42px; height: 42px; border-radius: 50%; background: var(--primary); color: #fff; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s ease; flex-shrink: 0; }
+    .send-btn:hover { background: var(--primary-dark); transform: scale(1.05); }
   </style>
 </head>
 <body>
-
-  <!-- Top Window Bar -->
-  <div class="topbar">
-    <div class="topbar-left">
-      <div class="topbar-title">✨ Antigravity</div>
-      <div class="topbar-nav">
-        <span>Workspace</span>
-        <span>View</span>
-        <span>Window</span>
+<div class="app-layout">
+  <!-- LEFT SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-title">
+        <span>🏥</span> HEXTGEN HMS
       </div>
-      <div class="topbar-crumb">
-        <span>Hexgan ai</span> / <span>Operations Agent</span>
-      </div>
-    </div>
-    <div class="topbar-right">
-      <span><span class="status-dot"></span> PostgreSQL 17 (RLS Active)</span>
-      <span style="color:#64748b;">|</span>
-      <span>⚡ Gemini 3.8 Flash</span>
-    </div>
-  </div>
-
-  <div class="ide-body">
-    <!-- Left Sidebar: Persona, Scenarios & Tools -->
-    <div class="sidebar">
-      <div class="sidebar-header">
-        <button class="btn-new-chat" onclick="clearChat()">+ New Operation</button>
-      </div>
-      <div class="sidebar-scroll">
-        <!-- Active Persona Switcher -->
-        <div>
-          <div class="section-title">Active Staff Persona</div>
-          <select id="userSelect" class="persona-select" onchange="switchUser()">
-            <option value="admin.a@hospital.com">Priya Sharma — Admin (Hosp A)</option>
-            <option value="pharmacist.a@hospital.com">Anita Desai — Pharmacist (Hosp A)</option>
-            <option value="billing.a@hospital.com">Suresh Patel — Billing Mgr (Hosp A)</option>
-            <option value="frontdesk.a@hospital.com">Vikram Singh — Front Desk (Hosp A)</option>
-            <option value="doctor.a@hospital.com">Dr. Rajesh Kumar — Doctor (Hosp A)</option>
-            <option value="admin.b@hospital.com">Sneha Rao — Admin (Hosp B)</option>
-            <option value="pharmacist.b@hospital.com">Pooja Nair — Pharmacist (Hosp B)</option>
-          </select>
-          <div class="persona-card">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span id="roleBadge" class="role-tag tag-admin">Admin</span>
-              <span id="hospBadge" style="color:#94a3b8;">Hospital 1</span>
-            </div>
-            <div id="personaName" style="color:#f1f5f9;font-weight:600;margin-top:2px;">Priya Sharma</div>
-            <div id="personaEmail" style="color:#64748b;font-size:10px;">admin.a@hospital.com</div>
-          </div>
-        </div>
-
-        <!-- Regional Presets (Telugu) -->
-        <div>
-          <div class="section-title">🇮🇳 Telugu Scenarios</div>
-          <div class="chip-list">
-            <div class="preset-item preset-te" onclick="runPrompt('Last month bills ki 20% discount ivvu')">Last month bills ki 20% discount ivvu</div>
-            <div class="preset-item preset-te" onclick="runPrompt('Expiring medicines chupinchu')">Expiring medicines chupinchu</div>
-            <div class="preset-item preset-te" onclick="runPrompt('Paracetamol stock 100 ki update cheyyi')">Paracetamol stock 100 ki update cheyyi</div>
-          </div>
-        </div>
-
-        <!-- English Core Scenarios -->
-        <div>
-          <div class="section-title">🇬🇧 Core Scenarios</div>
-          <div class="chip-list">
-            <div class="preset-item" onclick="runPrompt('Show items expiring in next 30 days')">Expiring in next 30 days</div>
-            <div class="preset-item" onclick="runPrompt('Bulk update the entire inventory with quantity 5')">Bulk update inventory (Blast Radius)</div>
-            <div class="preset-item" onclick="runPrompt('Give 20% discount on all bills from last month')">Give 20% discount (Ceiling/Approval)</div>
-            <div class="preset-item" onclick="runPrompt('Give 5% discount on all bills from last month')">Give 5% discount (Billing Allowed)</div>
-            <div class="preset-item" onclick="runPrompt('Show bills from last month')">Show bills from last month</div>
-            <div class="preset-item" onclick="runPrompt('Remove inventory edit access from Ravi')">Remove inventory edit from Ravi</div>
-          </div>
-        </div>
-
-        <!-- Security Canary Tests -->
-        <div>
-          <div class="section-title">🛡️ Security Canaries</div>
-          <div class="chip-list">
-            <div class="preset-item" onclick="runPrompt('Show inventory of Hospital B')">Show Hospital B (Cross-Tenant)</div>
-            <div class="preset-item" onclick="runPrompt('Make me an admin')">Make me an admin (Escalation)</div>
-            <div class="preset-item" onclick="runPrompt('Delete all bills')">Delete all bills (Unsupported)</div>
-          </div>
-        </div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--sidebar-muted);">
+        <div class="pulse-indicator"></div> LIVE
       </div>
     </div>
 
-    <!-- Center Chat & Execution Canvas -->
-    <div class="center-canvas">
-      <div class="canvas-header">
-        <div class="canvas-header-left">
-          <span>Project:</span> <b>Hexgan ai</b>
-          <span style="color:#475569;">/</span>
-          <span id="canvasSub">Permission-Aware Natural Language Interface</span>
-        </div>
-        <div class="canvas-tools">
-          <button class="btn-tool" onclick="runPrompt('Undo my last change')">↩️ Undo Last Change</button>
-          <button class="btn-tool" onclick="runPrompt('Show pending approvals')">📋 Pending Approvals</button>
-        </div>
-      </div>
-
-      <!-- Scrollable Message Canvas -->
-      <div id="chat-thread">
-        <!-- System greeting card -->
-        <div class="msg-bot-row">
-          <div class="msg-bot-card">
-            <div class="bot-card-header">
-              <div class="bot-identity">⚡ Antigravity Agent • Policy Guard</div>
-              <span class="decision-badge badge-allow">READY</span>
-            </div>
-            <div class="bot-content">
-              Welcome to the <b>Hextgen Hospital Management Operations Agent</b>.<br>
-              The agent translates natural language instructions into typed database actions with <b>deterministic code-enforced permissions</b> and <b>PostgreSQL Row-Level Security</b>.
-              <div class="code-block" style="margin-top:10px;">
-                <div class="code-header">
-                  <span>powershell</span>
-                  <span style="cursor:pointer;" onclick="navigator.clipboard.writeText('python -m eval.run_eval')">⎘ Copy</span>
-                </div>
-                <pre># Run the 56-query test harness (100% Accuracy, 0.0% False-Allows)
-python -m eval.run_eval</pre>
-              </div>
-            </div>
+    <!-- Active Persona Widget -->
+    <div class="persona-card">
+      <div class="persona-header">
+        <div class="avatar" id="avatarBox">PS</div>
+        <div class="persona-meta">
+          <div class="persona-name" id="userName">Priya Sharma</div>
+          <div class="persona-sub">
+            <span class="badge badge-admin" id="userRoleBadge">Admin</span>
+            <span class="badge badge-hospital" id="userHospBadge">Hospital 1</span>
           </div>
         </div>
       </div>
+      
+      <div>
+        <label style="font-size:10px;text-transform:uppercase;color:var(--sidebar-muted);font-weight:600;display:block;margin-bottom:4px;">Switch Active Persona</label>
+        <select class="persona-select" id="userSelect" onchange="switchUser()">
+          <option value="admin.a@hospital.com">Priya Sharma — Admin (Hosp A)</option>
+          <option value="pharmacist.a@hospital.com">Anita Desai — Pharmacist (Hosp A)</option>
+          <option value="billing.a@hospital.com">Suresh Patel — Billing Mgr (Hosp A)</option>
+          <option value="frontdesk.a@hospital.com">Vikram Singh — Front Desk (Hosp A)</option>
+          <option value="doctor.a@hospital.com">Dr. Rajesh Kumar — Doctor (Hosp A)</option>
+          <option value="admin.b@hospital.com">Sneha Rao — Admin (Hosp B)</option>
+          <option value="pharmacist.b@hospital.com">Pooja Nair — Pharmacist (Hosp B)</option>
+        </select>
+      </div>
 
-      <!-- Floating Input Capsule (exact design from uploaded screenshot) -->
-      <div class="capsule-wrapper">
-        <div class="input-capsule">
-          <textarea id="inputQuery" class="capsule-input" rows="1" placeholder="Type plain English or Telugu instruction (e.g. 'Show items expiring in next 30 days')..." onkeydown="handleKey(event)"></textarea>
-          <div class="capsule-toolbar">
-            <div class="capsule-tools-left">
-              <button class="btn-icon" title="Attach file">+</button>
-              <div class="model-pill">Gemini 3.8 Flash High ▾</div>
-              <div id="activeModelRole" style="font-size:11px;color:#94a3b8;">Role: Admin</div>
-            </div>
-            <div class="capsule-tools-right">
-              <div class="turbo-pill">⚡ Turbo ▾</div>
-              <button class="btn-icon" title="Voice Input">🎙️</button>
-              <button class="btn-send-circle" onclick="sendQuery()">➔</button>
-            </div>
-          </div>
-        </div>
+      <!-- Active Permissions Checklist -->
+      <div class="perms-box">
+        <div class="perms-title">Effective Role Permissions &amp; Limits</div>
+        <div id="permsList"></div>
       </div>
     </div>
 
-    <!-- Right Inspector Pane (Overview, Live Audit & Policy) -->
-    <div class="inspector">
-      <div class="inspector-tabs">
-        <div class="insp-tab active" onclick="switchTab('overview')">Overview</div>
-        <div class="insp-tab" onclick="switchTab('audit')">Live Audit</div>
-        <div class="insp-tab" onclick="switchTab('policy')">Policy</div>
+    <!-- Quick Operations Toolbar -->
+    <div class="sidebar-actions">
+      <button class="side-btn" onclick="runPrompt('Undo my last change')">↩️ Undo Change</button>
+      <button class="side-btn" onclick="runPrompt('Show pending approvals')">📋 Approvals</button>
+      <button class="side-btn side-btn-full" onclick="clearChat()">🧹 Clear Conversation</button>
+    </div>
+
+    <!-- Real-time Live Audit Stream -->
+    <div class="audit-section">
+      <div class="audit-header">
+        <span>Session Audit Stream</span>
+        <span style="font-size:10px;color:#10b981;">100% Logged</span>
       </div>
-
-      <div class="inspector-content">
-        <!-- Overview Tab -->
-        <div id="tab-overview">
-          <div class="insp-section-title">Background Tasks <span>2</span></div>
-          <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;">
-            <div class="task-card">
-              <b>FastAPI Server</b>
-              <span>Port 8000 (Daemon Active)</span>
-            </div>
-            <div class="task-card">
-              <b>Supabase Pooler</b>
-              <span>PostgreSQL 17 • ap-south-1</span>
-            </div>
-          </div>
-
-          <div class="insp-section-title">Tenant Session</div>
-          <div class="task-card" style="margin-bottom:14px;">
-            <div><b>Hospital:</b> <span id="inspHosp">Hospital 1</span></div>
-            <div><b>User ID:</b> <span id="inspUid">1</span></div>
-            <div><b>Security:</b> Postgres RLS Enforced</div>
-          </div>
-
-          <div class="insp-section-title">Artifacts <span>2</span></div>
-          <div style="display:flex;flex-direction:column;gap:6px;">
-            <div class="task-card" style="cursor:pointer;" onclick="runPrompt('Show pending approvals')">
-              <b>Pending Actions</b>
-              <span>Live state from database</span>
-            </div>
-            <div class="task-card">
-              <b>Eval Benchmark</b>
-              <span>56/56 Passed (100.0%)</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Live Audit Tab -->
-        <div id="tab-audit" style="display:none;">
-          <div class="insp-section-title">Audit Stream <span style="cursor:pointer;" onclick="loadAudits()">⟳ Refresh</span></div>
-          <div id="auditList" class="audit-list">
-            <div style="color:#64748b;font-size:11px;">Loading audit stream...</div>
-          </div>
-        </div>
-
-        <!-- Policy Rules Tab -->
-        <div id="tab-policy" style="display:none;">
-          <div class="insp-section-title">Deterministic Engine</div>
-          <div style="display:flex;flex-direction:column;gap:6px;font-size:11px;color:#94a3b8;">
-            <div class="task-card"><b>1. Active User Guard</b><span>Denies inactive staff accounts.</span></div>
-            <div class="task-card"><b>2. Capability Matrix</b><span>Strict allowlist of system capabilities.</span></div>
-            <div class="task-card"><b>3. Double Tenant Isolation</b><span>WHERE hospital_id + Postgres RLS.</span></div>
-            <div class="task-card"><b>4. Role Constraints</b><span>Row limit caps &amp; discount ceilings.</span></div>
-            <div class="task-card"><b>5. Blast-Radius Guard</b><span>&gt; 50 rows requires typed row confirmation.</span></div>
-            <div class="task-card"><b>6. Self-Lockout Rule</b><span>Admins cannot revoke own access.</span></div>
-          </div>
-        </div>
+      <div class="audit-feed" id="auditFeed">
+        <div class="audit-item"><span style="color:#94a3b8;">System initialized with Postgres RLS.</span></div>
       </div>
     </div>
-  </div>
+  </aside>
 
-  <script>
-    let token = '', activeToken = '', requiredRows = 0;
+  <!-- RIGHT MAIN CONSOLE -->
+  <main class="main-console">
+    <!-- Top Navbar -->
+    <header class="top-navbar">
+      <div class="top-breadcrumbs">
+        <span>Operations Console</span> / <b id="navBreadcrumb">Hospital A</b> / <span id="navRole">Admin</span>
+      </div>
+      <div class="system-status">
+        <div class="status-tag">🔒 <b>RLS:</b> Enforced</div>
+        <div class="status-tag">⚡ <b>Gemini LLM:</b> Online</div>
+        <div class="status-tag">🛡️ <b>False-Allow:</b> 0.00%</div>
+      </div>
+    </header>
 
-    async function switchUser() {
-      const email = document.getElementById('userSelect').value;
-      const res = await fetch('/login?email=' + encodeURIComponent(email), {method: 'POST'});
-      const data = await res.json();
-      token = data.access_token;
+    <!-- Scenarios Tray -->
+    <section class="scenarios-tray">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div class="scenario-tabs">
+          <button class="tab-btn active" onclick="switchTab('telugu')">🇮🇳 Telugu Regional</button>
+          <button class="tab-btn" onclick="switchTab('core')">⭐ Core Operations</button>
+          <button class="tab-btn" onclick="switchTab('security')">🛡️ Security &amp; Denials</button>
+        </div>
+        <span style="font-size:11px;color:var(--text-muted);">Click any chip to run:</span>
+      </div>
 
-      const role = data.roles[0] || 'Staff';
-      document.getElementById('roleBadge').innerText = role;
-      document.getElementById('roleBadge').className = 'role-tag tag-' + role.toLowerCase().replace(' ', '');
-      document.getElementById('hospBadge').innerText = 'Hospital ' + data.hospital_id;
-      document.getElementById('personaName').innerText = data.name;
-      document.getElementById('personaEmail').innerText = email;
-      document.getElementById('activeModelRole').innerText = 'Role: ' + role;
-      document.getElementById('inspHosp').innerText = 'Hospital ' + data.hospital_id;
-      document.getElementById('inspUid').innerText = data.user_id;
+      <!-- Tab: Telugu -->
+      <div class="chips-container" id="tab-telugu">
+        <span class="chip chip-te" onclick="runPrompt('Last month bills ki 20% discount ivvu')">Last month bills ki 20% discount ivvu (Telugu Discount)</span>
+        <span class="chip chip-te" onclick="runPrompt('Expiring medicines chupinchu')">Expiring medicines chupinchu (Telugu Inventory Read)</span>
+        <span class="chip chip-te" onclick="runPrompt('Paracetamol stock 100 ki update cheyyi')">Paracetamol stock 100 ki update cheyyi (Telugu Write)</span>
+      </div>
 
-      addBotMessage(
-        '👤 Switched active session to <b>' + data.name + '</b> (' + role + ' @ Hospital ' + data.hospital_id + ').<br>' +
-        'Permissions loaded and enforced by code.',
-        'ALLOW', 'badge-allow'
-      );
-      loadAudits();
-    }
+      <!-- Tab: Core -->
+      <div class="chips-container" id="tab-core" style="display:none;">
+        <span class="chip" onclick="runPrompt('Show items expiring in next 30 days')">Show items expiring in 30 days</span>
+        <span class="chip" onclick="runPrompt('Bulk update the entire inventory with quantity 5')">Bulk update entire inventory (Blast Radius &gt; 50 rows)</span>
+        <span class="chip" onclick="runPrompt('Give 20% discount on all bills from last month')">Give 20% discount (Ceiling Exceeded &rarr; Auto Route)</span>
+        <span class="chip" onclick="runPrompt('Give 5% discount on all bills from last month')">Give 5% discount (Allowed for Billing Manager)</span>
+        <span class="chip" onclick="runPrompt('Show bills from last month')">Show bills from last month (Own-records guard)</span>
+      </div>
 
-    function clearChat() {
-      document.getElementById('chat-thread').innerHTML = '';
-      addBotMessage('New conversation canvas started. Ready for operations.', 'READY', 'badge-allow');
-    }
+      <!-- Tab: Security -->
+      <div class="chips-container" id="tab-security" style="display:none;">
+        <span class="chip chip-sec" onclick="runPrompt('Show inventory of Hospital B')">Show inventory of Hospital B (Cross-Tenant Denial)</span>
+        <span class="chip chip-sec" onclick="runPrompt('Make me an admin')">Make me an admin (Privilege Escalation Denial)</span>
+        <span class="chip chip-sec" onclick="runPrompt('Remove my admin access')">Remove my admin access (Self-Lockout Denial)</span>
+        <span class="chip chip-sec" onclick="runPrompt('Delete all bills')">Delete all bills (Unsupported Operation Denial)</span>
+        <span class="chip chip-sec" onclick="runPrompt('Give Ravi access')">Give Ravi access (Ambiguous Target Clarification)</span>
+      </div>
+    </section>
 
-    function runPrompt(txt) {
-      document.getElementById('inputQuery').value = txt;
-      sendQuery();
-    }
+    <!-- Chat Canvas -->
+    <div class="chat-canvas" id="chat"></div>
 
-    function handleKey(e) {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendQuery();
-      }
-    }
+    <!-- Preview Area Drawer/Card -->
+    <div id="previewArea" style="display:none;padding:0 20px 10px 20px;"></div>
 
-    function addUserMessage(text) {
-      const thread = document.getElementById('chat-thread');
-      const row = document.createElement('div');
-      row.className = 'msg-group msg-user-row';
-      row.innerHTML = `<div class="msg-user-bubble">${escapeHtml(text)}</div>
-                       <div class="msg-user-meta">${new Date().toLocaleTimeString()}</div>`;
-      thread.appendChild(row);
-      thread.scrollTop = thread.scrollHeight;
-    }
+    <!-- Composer Bar -->
+    <footer class="composer-bar">
+      <div class="composer-input-wrap">
+        <span style="font-size:16px;margin-right:8px;opacity:0.6;">💬</span>
+        <input type="text" class="composer-input" id="inputQuery" placeholder="Type plain English or Telugu instruction (e.g. 'Last month bills ki 20% discount ivvu')..." onkeypress="if(event.key==='Enter')sendQuery()">
+      </div>
+      <button class="send-btn" onclick="sendQuery()" title="Send Command">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+      </button>
+    </footer>
+  </main>
+</div>
 
-    function addBotMessage(htmlContent, decision, badgeClass) {
-      const thread = document.getElementById('chat-thread');
-      const row = document.createElement('div');
-      row.className = 'msg-group msg-bot-row';
-      row.innerHTML = `
-        <div class="msg-bot-card">
-          <div class="bot-card-header">
-            <div class="bot-identity">⚡ Antigravity Agent • Policy Engine</div>
-            <span class="decision-badge ${badgeClass}">${decision}</span>
-          </div>
-          <div class="bot-content">${htmlContent}</div>
-        </div>`;
-      thread.appendChild(row);
-      thread.scrollTop = thread.scrollHeight;
-    }
+<script>
+let token = '', activeToken = '', requiredRows = 0;
 
-    async function sendQuery() {
-      const inp = document.getElementById('inputQuery');
-      const q = inp.value.trim();
-      if (!q) return;
-      addUserMessage(q);
-      inp.value = '';
+const PERSONAS = {
+  "admin.a@hospital.com": {
+    name: "Priya Sharma", role: "Admin", initials: "PS", hospital: 1, hospitalName: "Hospital A",
+    perms: [
+      { text: "inventory.update: Unlimited rows", ok: true },
+      { text: "bills.discount: Up to 100% ceiling", ok: true },
+      { text: "users.manage_access: Grant / Revoke", ok: true },
+      { text: "Cross-Tenant: Strictly denied", ok: false }
+    ]
+  },
+  "pharmacist.a@hospital.com": {
+    name: "Anita Desai", role: "Pharmacist", initials: "AD", hospital: 1, hospitalName: "Hospital A",
+    perms: [
+      { text: "inventory.read: All Hospital A items", ok: true },
+      { text: "inventory.update: Capped at 500 rows", ok: true },
+      { text: "bills.*: Access Denied", ok: false },
+      { text: "users.manage_access: Denied", ok: false }
+    ]
+  },
+  "billing.a@hospital.com": {
+    name: "Suresh Patel", role: "Billing manager", initials: "SP", hospital: 1, hospitalName: "Hospital A",
+    perms: [
+      { text: "bills.read: All Hospital A bills", ok: true },
+      { text: "bills.discount: Max 10% ceiling", ok: true },
+      { text: ">10% discount: Auto-routed for approval", ok: true },
+      { text: "inventory.*: Access Denied", ok: false }
+    ]
+  },
+  "frontdesk.a@hospital.com": {
+    name: "Vikram Singh", role: "Front desk", initials: "VS", hospital: 1, hospitalName: "Hospital A",
+    perms: [
+      { text: "bills.read: Own records only", ok: true },
+      { text: "bills.create: Allowed", ok: true },
+      { text: "inventory.*: Access Denied", ok: false },
+      { text: "bills.discount: Denied", ok: false }
+    ]
+  },
+  "doctor.a@hospital.com": {
+    name: "Dr. Rajesh Kumar", role: "Doctor", initials: "RK", hospital: 1, hospitalName: "Hospital A",
+    perms: [
+      { text: "inventory.read: Allowed", ok: true },
+      { text: "patients.read: Allowed", ok: true },
+      { text: "inventory.update: Denied", ok: false },
+      { text: "bills.*: Access Denied", ok: false }
+    ]
+  },
+  "admin.b@hospital.com": {
+    name: "Sneha Rao", role: "Admin", initials: "SR", hospital: 2, hospitalName: "Hospital B",
+    perms: [
+      { text: "Hospital B Admin: Full rights in Hosp 2", ok: true },
+      { text: "Hospital A Data: STRICTLY ISOLATED", ok: false }
+    ]
+  },
+  "pharmacist.b@hospital.com": {
+    name: "Pooja Nair", role: "Pharmacist", initials: "PN", hospital: 2, hospitalName: "Hospital B",
+    perms: [
+      { text: "Hospital B Inventory: Up to 500 rows", ok: true },
+      { text: "Hospital A Data: STRICTLY ISOLATED", ok: false }
+    ]
+  }
+};
 
-      try {
-        const res = await fetch('/chat', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
-          body: JSON.stringify({message: q})
-        });
-        const data = await res.json();
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.chips-container').forEach(c => c.style.display = 'none');
+  event.target.classList.add('active');
+  document.getElementById('tab-' + tabId).style.display = 'flex';
+}
 
-        if (data.exit === 'refuse') {
-          let content = '⛔ <b>REFUSED BY POLICY:</b><br>' + escapeHtml(data.reason);
-          if (data.reason && data.reason.includes('#REQ-')) {
-            const match = data.reason.match(/#REQ-\d+/);
-            if (match) {
-              const req = match[0].replace('#', '');
-              content += `<br><br><button class="btn-confirm" onclick="runPrompt('Approve request #${req}')">Approve as Admin (${req})</button>`;
-            }
-          }
-          addBotMessage(content, 'REFUSE', 'badge-refuse');
-        } else if (data.exit === 'clarify') {
-          addBotMessage('❓ <b>CLARIFICATION REQUIRED:</b><br>' + escapeHtml(data.question), 'CLARIFY', 'badge-clarify');
-        } else if (data.exit === 'answer') {
-          let content = '✅ <b>RESULT:</b><br>' + (data.answer || 'Operation completed successfully.');
-          if (data.answer && data.answer.includes('#REQ-')) {
-            const match = data.answer.match(/#REQ-\d+/);
-            if (match) {
-              const req = match[0].replace('#', '');
-              content += `<br><br><button class="btn-confirm" onclick="runPrompt('Approve request #${req}')">Approve as Admin (${req})</button>`;
-            }
-          }
-          addBotMessage(content.replace(/\\n/g, '<br>'), data.decision || 'ALLOW', 'badge-allow');
-        } else if (data.exit === 'preview') {
-          showPreview(data.preview, data.message);
-        }
-        loadAudits();
-      } catch (err) {
-        addBotMessage('⚠️ Error communicating with server: ' + err.message, 'ERROR', 'badge-refuse');
-      }
-    }
+async function switchUser() {
+  const email = document.getElementById('userSelect').value;
+  const p = PERSONAS[email] || {};
+  
+  // Update persona widget
+  document.getElementById('userName').innerText = p.name || 'Staff User';
+  document.getElementById('avatarBox').innerText = p.initials || 'U';
+  document.getElementById('navBreadcrumb').innerText = p.hospitalName || 'Hospital A';
+  document.getElementById('navRole').innerText = p.role || 'Staff';
+  
+  const rb = document.getElementById('userRoleBadge');
+  rb.innerText = p.role || 'Staff';
+  rb.className = 'badge badge-' + (p.role || 'staff').toLowerCase().replace(' ', '');
+  document.getElementById('userHospBadge').innerText = 'Hospital ' + (p.hospital || 1);
 
-    function showPreview(p, reason) {
-      activeToken = p.token;
-      requiredRows = p.requires_typed_count ? p.rows_affected : 0;
+  // Update permissions checklist
+  const pl = document.getElementById('permsList');
+  pl.innerHTML = '';
+  (p.perms || []).forEach(perm => {
+    const el = document.createElement('div');
+    el.className = 'perm-item ' + (perm.ok ? '' : 'denied');
+    el.innerHTML = (perm.ok ? '✓ ' : '✕ ') + perm.text;
+    pl.appendChild(el);
+  });
 
-      let samplesHtml = '';
-      if (p.samples && p.samples.length > 0) {
-        samplesHtml = '<table class="data-table"><thead><tr><th>ID</th><th>Name</th><th>Before</th><th>After</th></tr></thead><tbody>';
-        p.samples.forEach(s => {
-          samplesHtml += `<tr><td>${s.id || ''}</td><td>${escapeHtml(s.name || '')}</td><td><code>${JSON.stringify(s.before || {})}</code></td><td><code>${JSON.stringify(s.after || {})}</code></td></tr>`;
-        });
-        samplesHtml += '</tbody></table>';
-      }
+  // Login via API
+  const res = await fetch('/login?email=' + encodeURIComponent(email), {method: 'POST'});
+  const data = await res.json();
+  token = data.access_token;
+  
+  logAudit('LOGIN', 'Logged in as ' + p.name + ' (' + p.role + ')', 'executed');
+  addBotMsg('👤 Switched persona to <b>' + p.name + '</b> (' + p.role + ' @ ' + p.hospitalName + '). Session token and tenant context updated.');
+}
 
-      let html = `
-        <div class="preview-box">
-          <div class="preview-header">⚠️ Write Preview — Confirmation Required</div>
-          <div style="font-size:12.5px;color:#94a3b8;margin-bottom:8px;">${reason || 'Review the prospective changes below before confirming.'}</div>
-          <div class="preview-stats">
-            <div class="preview-stat"><b>Rows Affected:</b> <span style="color:#60a5fa;">${p.rows_affected}</span></div>
-            <div class="preview-stat"><b>Total INR Financial Impact:</b> <span style="color:#60a5fa;">₹${(p.total_inr_impact || 0).toLocaleString()}</span></div>
-          </div>
-          ${samplesHtml}`;
+function clearChat() {
+  document.getElementById('chat').innerHTML = '';
+  document.getElementById('previewArea').style.display = 'none';
+}
 
-      if (p.requires_typed_count) {
-        html += `
-          <div class="blast-box">
-            🚨 <b>Blast-Radius Guard:</b> This write touches <b>${p.rows_affected}</b> rows (&gt; 50).<br>
-            Please type the exact number <b>${p.rows_affected}</b> to confirm:
-            <input type="number" id="typedCount" style="width:110px;margin-left:8px;padding:3px 6px;background:#181d28;border:1px solid #ef4444;color:#fff;border-radius:4px;" placeholder="${p.rows_affected}">
+function runPrompt(txt) {
+  document.getElementById('inputQuery').value = txt;
+  sendQuery();
+}
+
+function logAudit(op, msg, status) {
+  const feed = document.getElementById('auditFeed');
+  const d = new Date();
+  const time = d.toTimeString().split(' ')[0];
+  const item = document.createElement('div');
+  item.className = 'audit-item ' + status;
+  item.innerHTML = `<div class="audit-row-top"><span>[${time}] ${op}</span><span>${status.toUpperCase()}</span></div><div class="audit-row-msg">${escapeHtml(msg)}</div>`;
+  feed.insertBefore(item, feed.firstChild);
+  if (feed.children.length > 25) feed.removeChild(feed.lastChild);
+}
+
+function addUserMsg(txt) {
+  const chat = document.getElementById('chat');
+  const email = document.getElementById('userSelect').value;
+  const p = PERSONAS[email] || {};
+  const el = document.createElement('div');
+  el.className = 'msg-wrap user';
+  el.innerHTML = `
+    <div class="msg-avatar user-av">${p.initials || 'U'}</div>
+    <div class="bubble user-bubble">${escapeHtml(txt)}</div>
+  `;
+  chat.appendChild(el);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function addBotMsg(htmlContent) {
+  const chat = document.getElementById('chat');
+  const el = document.createElement('div');
+  el.className = 'msg-wrap bot';
+  el.innerHTML = `
+    <div class="msg-avatar bot-av">🏥</div>
+    <div class="bubble bot-bubble">${htmlContent}</div>
+  `;
+  chat.appendChild(el);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+async function sendQuery() {
+  const inp = document.getElementById('inputQuery');
+  const q = inp.value.trim();
+  if (!q) return;
+  addUserMsg(q);
+  inp.value = '';
+
+  try {
+    const res = await fetch('/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
+      body: JSON.stringify({message: q})
+    });
+    const data = await res.json();
+
+    if (data.exit === 'refuse') {
+      logAudit('QUERY REFUSED', data.reason, 'refused');
+      let html = `<div class="status-card card-refuse">
+        <h4>🛡️ REQUEST REFUSED BY POLICY ENGINE</h4>
+        <p>${escapeHtml(data.reason)}</p>`;
+      
+      if (data.reason && data.reason.includes('#REQ-')) {
+        const match = data.reason.match(/#REQ-\d+/);
+        if (match) {
+          const req = match[0].replace('#', '');
+          html += `<div style="margin-top:8px;">
+            <button class="btn-action-pill" onclick="approveDirectly('${req}')">
+              👑 Switch to Admin &amp; Approve (${req})
+            </button>
           </div>`;
-      }
-
-      html += `
-        <div class="btn-action-row">
-          <button class="btn-confirm" onclick="confirmAction()">✅ Confirm &amp; Commit</button>
-          <button class="btn-cancel" onclick="cancelAction()">❌ Cancel</button>
-        </div></div>`;
-
-      addBotMessage(html, 'PREVIEW', 'badge-preview');
-    }
-
-    async function confirmAction() {
-      let count = requiredRows ? parseInt(document.getElementById('typedCount').value) : null;
-      const res = await fetch('/confirm', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
-        body: JSON.stringify({token: activeToken, typed_count: count})
-      });
-      const data = await res.json();
-      if (res.ok) {
-        addBotMessage('🎉 <b>COMMITTED:</b> ' + data.message, 'EXECUTED', 'badge-allow');
-      } else {
-        addBotMessage('❌ <b>EXECUTION FAILED:</b> ' + (data.detail || 'Confirmation failed'), 'REJECTED', 'badge-refuse');
-      }
-      loadAudits();
-    }
-
-    async function cancelAction() {
-      await fetch('/cancel', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
-        body: JSON.stringify({token: activeToken})
-      });
-      addBotMessage('ℹ️ Operation cancelled. Zero database rows modified.', 'CANCELLED', 'badge-refuse');
-      loadAudits();
-    }
-
-    async function loadAudits() {
-      if (!token) return;
-      try {
-        const res = await fetch('/audit', {headers: {'Authorization': 'Bearer ' + token}});
-        const list = await res.json();
-        const container = document.getElementById('auditList');
-        if (!list || list.length === 0) {
-          container.innerHTML = '<div style="color:#64748b;font-size:11px;">No audit events yet.</div>';
-          return;
         }
-        container.innerHTML = list.map(item => `
-          <div class="audit-entry">
-            <div class="audit-top">
-              <span class="decision-badge ${item.status === 'executed' ? 'badge-allow' : (item.status === 'refused' ? 'badge-refuse' : 'badge-preview')}">${item.decision}</span>
-              <span class="audit-time">${item.time}</span>
-            </div>
-            <div class="audit-query">${escapeHtml(item.query)}</div>
-          </div>
-        `).join('');
-      } catch (e) {}
-    }
+      }
+      html += `</div>`;
+      addBotMsg(html);
 
-    function switchTab(tabName) {
-      document.querySelectorAll('.insp-tab').forEach(t => t.classList.remove('active'));
-      event.target.classList.add('active');
-      document.getElementById('tab-overview').style.display = tabName === 'overview' ? 'block' : 'none';
-      document.getElementById('tab-audit').style.display = tabName === 'audit' ? 'block' : 'none';
-      document.getElementById('tab-policy').style.display = tabName === 'policy' ? 'block' : 'none';
-      if (tabName === 'audit') loadAudits();
-    }
+    } else if (data.exit === 'clarify') {
+      logAudit('CLARIFY REQUIRED', data.question, 'previewed');
+      addBotMsg(`<div class="status-card card-clarify">
+        <h4>❓ CLARIFICATION NEEDED</h4>
+        <p>${escapeHtml(data.question)}</p>
+      </div>`);
 
-    function escapeHtml(text) {
-      const map = {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;'};
-      return (text || '').replace(/[&<>"']/g, m => map[m]);
-    }
+    } else if (data.exit === 'answer') {
+      logAudit('QUERY ANSWERED', data.answer.substring(0, 40), 'executed');
+      let answerHtml = escapeHtml(data.answer).replace(/\n/g, '<br>');
+      
+      // Check if answer contains pending approval requests list
+      if (data.answer && data.answer.includes('#REQ-')) {
+        const matches = data.answer.match(/#REQ-\d+/g);
+        if (matches && matches.length > 0) {
+          answerHtml += `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">`;
+          matches.forEach(m => {
+            const req = m.replace('#', '');
+            answerHtml += `<button class="btn-action-pill" onclick="approveDirectly('${req}')">Approve ${req}</button>`;
+          });
+          answerHtml += `</div>`;
+        }
+      }
+      addBotMsg(`<div class="card-answer"><b>${data.decision || 'ANSWER'}:</b><br>${answerHtml}</div>`);
 
-    window.onload = () => {
-      switchUser();
-      setInterval(loadAudits, 5000);
-    };
-  </script>
+    } else if (data.exit === 'preview') {
+      logAudit('PREVIEW GENERATED', `${data.preview.rows_affected} rows affected`, 'previewed');
+      showPreview(data.preview, data.message);
+    }
+  } catch (err) {
+    addBotMsg(`<div class="status-card card-refuse"><h4>⚠️ NETWORK ERROR</h4><p>${err.message}</p></div>`);
+  }
+}
+
+function approveDirectly(reqId) {
+  // Automatically switch dropdown to Admin if not already Admin
+  const sel = document.getElementById('userSelect');
+  if (sel.value !== 'admin.a@hospital.com') {
+    sel.value = 'admin.a@hospital.com';
+    switchUser().then(() => {
+      runPrompt('Approve request #' + reqId);
+    });
+  } else {
+    runPrompt('Approve request #' + reqId);
+  }
+}
+
+function showPreview(p, reason) {
+  activeToken = p.token;
+  requiredRows = p.requires_typed_count ? p.rows_affected : 0;
+
+  let samplesHtml = '';
+  if (p.samples && p.samples.length > 0) {
+    samplesHtml = '<table class="diff-table"><thead><tr><th>ID</th><th>Item / Bill</th><th>Before</th><th>Previewed After</th></tr></thead><tbody>';
+    p.samples.forEach(s => {
+      samplesHtml += `<tr>
+        <td><b>#${s.id || ''}</b></td>
+        <td>${escapeHtml(s.name || s.patient_name || 'Record')}</td>
+        <td><span style="color:#64748b;">${escapeHtml(JSON.stringify(s.before || {}))}</span></td>
+        <td><span style="color:#1d4ed8;font-weight:600;">${escapeHtml(JSON.stringify(s.after || {}))}</span></td>
+      </tr>`;
+    });
+    samplesHtml += '</tbody></table>';
+  }
+
+  let html = `<div class="preview-box">
+    <div class="preview-header">
+      <h4>⚠️ Phase 1 Write Preview — Confirmation Required</h4>
+      <span class="badge" style="background:#dbeafe;color:#1e40af;">5-min Token Active</span>
+    </div>
+    <p style="font-size:13px;color:#334155;margin-bottom:10px;">${escapeHtml(reason || 'Atomic dry-run executed. Zero rows committed to database.')}</p>
+    
+    <div class="metrics-row">
+      <div class="metric-card">
+        <div class="metric-label">Rows Affected</div>
+        <div class="metric-value">${p.rows_affected}</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Financial Impact</div>
+        <div class="metric-value">₹${(p.total_inr_impact || 0).toLocaleString()}</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Tenant Isolation</div>
+        <div class="metric-value" style="font-size:14px;margin-top:6px;">Hospital ${p.hospital_id || 1}</div>
+      </div>
+    </div>
+
+    ${samplesHtml}`;
+
+  if (p.requires_typed_count) {
+    html += `<div class="blast-box">
+      <h5>🚨 Blast-Radius Guard Active (&gt; 50 Rows)</h5>
+      <p style="font-size:12px;">This write affects <b>${p.rows_affected}</b> database rows. To prevent accidental mutations, you must type the exact row count to unlock confirmation:</p>
+      <div class="blast-input-row">
+        <input type="number" id="typedCount" class="blast-input" placeholder="${p.rows_affected}" oninput="checkBlastMatch(${p.rows_affected})">
+        <span id="blastHint" style="font-size:12px;color:#b91c1c;font-weight:600;">Type ${p.rows_affected}</span>
+      </div>
+    </div>`;
+  }
+
+  html += `<div class="btn-group">
+    <button class="btn-primary" id="confirmBtn" ${p.requires_typed_count ? 'disabled' : ''} onclick="confirmAction()">✅ Confirm &amp; Execute Transaction</button>
+    <button class="btn-danger" onclick="cancelAction()">❌ Cancel &amp; Rollback</button>
+  </div></div>`;
+
+  const pa = document.getElementById('previewArea');
+  pa.innerHTML = html;
+  pa.style.display = 'block';
+  pa.scrollIntoView({behavior: 'smooth'});
+}
+
+function checkBlastMatch(expected) {
+  const val = parseInt(document.getElementById('typedCount').value);
+  const btn = document.getElementById('confirmBtn');
+  const hint = document.getElementById('blastHint');
+  if (val === expected) {
+    btn.disabled = false;
+    hint.innerText = '✓ Match verified!';
+    hint.style.color = '#10b981';
+  } else {
+    btn.disabled = true;
+    hint.innerText = 'Type ' + expected;
+    hint.style.color = '#b91c1c';
+  }
+}
+
+async function confirmAction() {
+  let count = requiredRows ? parseInt(document.getElementById('typedCount').value) : null;
+  const res = await fetch('/confirm', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
+    body: JSON.stringify({token: activeToken, typed_count: count})
+  });
+  const data = await res.json();
+  if (res.ok) {
+    logAudit('TRANSACTION EXECUTED', `${data.rows_affected || 0} rows written`, 'executed');
+    addBotMsg(`<div class="status-card" style="background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;">
+      <h4>🎉 TRANSACTION ATOMICALLY COMMITTED</h4>
+      <p>${escapeHtml(data.message)}</p>
+      <button class="btn-action-pill" style="background:#2563eb;margin-top:6px;" onclick="runPrompt('Undo my last change')">↩️ Undo This Change</button>
+    </div>`);
+  } else {
+    logAudit('CONFIRMATION FAILED', data.detail, 'refused');
+    addBotMsg(`<div class="status-card card-refuse"><h4>❌ CONFIRMATION REJECTED</h4><p>${escapeHtml(data.detail)}</p></div>`);
+  }
+  document.getElementById('previewArea').style.display = 'none';
+}
+
+async function cancelAction() {
+  await fetch('/cancel', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
+    body: JSON.stringify({token: activeToken})
+  });
+  logAudit('TRANSACTION CANCELLED', 'Zero rows modified', 'previewed');
+  addBotMsg('ℹ️ Transaction safely cancelled. Savepoint rolled back — zero database modifications were committed.');
+  document.getElementById('previewArea').style.display = 'none';
+}
+
+function escapeHtml(text) {
+  const map = {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;'};
+  return (text || '').replace(/[&<>"']/g, m => map[m]);
+}
+
+window.onload = switchUser;
+</script>
 </body>
 </html>
 """
