@@ -1,4 +1,4 @@
-# 🏥 Hextgen HMS Permission-Aware Operations Agent
+# 🏥 Permission-Aware Operations Agent
 **Deterministic, Role-Grounded Natural Language Database Operations for Hospital Staff**
 
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg?style=flat&logo=python&logoColor=white)](https://www.python.org/)
