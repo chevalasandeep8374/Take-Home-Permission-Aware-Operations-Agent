@@ -2,12 +2,15 @@ version: '3.8'
 
 services:
   web:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hms_agent_web
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://hms_app:hms_app_password@db:5432/hms_db}
-      - ADMIN_DATABASE_URL=${ADMIN_DATABASE_URL:-postgresql://postgres:postgres@db:5432/hms_db}
+      - DATABASE_URL=postgresql://hms_app:hms_app_password@db:5432/hms_db
+      - ADMIN_DATABASE_URL=postgresql://postgres:postgres@db:5432/hms_db
       - JWT_SECRET=${JWT_SECRET:-supersecretjwtkey_replace_in_production_min_32_chars}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     depends_on:
@@ -17,6 +20,7 @@ services:
 
   db:
     image: postgres:17-alpine
+    container_name: hms_agent_db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -25,10 +29,10 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
-      - ./db/rls.sql:/docker-entrypoint-initdb.d/02_rls.sql:ro
+      - ./db/init/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./seed/seed_data.sql:/docker-entrypoint-initdb.d/02_seed_data.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hms_db"]
       interval: 5s
       timeout: 5s
       retries: 5
