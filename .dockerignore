@@ -1,0 +1,28 @@
+# Virtual environment (do not copy host Windows venv into Linux container)
+.venv/
+venv/
+env/
+
+# Bytecode & Caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local Environment Variables & Secrets
+.env
+.env.local
+*.log
+
+# Git & IDE metadata
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Temporary files
+tmp/
+temp/
