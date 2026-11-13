@@ -1,7 +1,9 @@
 # 🏥 Permission-Aware Operations Agent
-**Deterministic, Role-Grounded Natural Language Database Operations for Hospital Staff**
+**Deterministic, Role-Grounded Natural Language Database Operations & Retrieval for Hospital Staff**
 
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg?style=flat&logo=python&logoColor=white)](https://www.python.org/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph%20Engine-FF6F00.svg?style=flat&logo=diagram-next&logoColor=white)](https://langchain-ai.github.io/langgraph/)
+[![RAG System](https://img.shields.io/badge/RAG-Tenant--Isolated%20SOPs-7952B3.svg?style=flat)](https://github.com/)
 [![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17%20RLS-336791.svg?style=flat&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688.svg?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Docker Compose](https://img.shields.io/badge/Docker-Ready-2496ED.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
@@ -13,7 +15,9 @@
 
 ## 📖 Executive Summary
 
-The **Hextgen HMS Operations Agent** enables hospital personnel (Administrators, Billing Managers, Pharmacists, Front Desk Staff, and Doctors) to query and update critical medical records and inventory using natural language in **English** and **Telugu**.
+The **Permission-Aware Operations Agent** enables hospital personnel (Administrators, Billing Managers, Pharmacists, Front Desk Staff, and Doctors) to execute critical database queries, write mutations, and operational policy lookups using natural language in **English** and **Telugu**.
+
+Orchestrated end-to-end via **LangGraph StateGraph** and equipped with a **Tenant-Aware Knowledge Retrieval (RAG) System**, it provides mathematical security guarantees against prompt injections, privilege escalations, and cross-hospital data leaks.
 
 > [!IMPORTANT]
 > **Core Architectural Axiom: "The LLM Proposes; Your Code Decides."**
@@ -24,67 +28,77 @@ The **Hextgen HMS Operations Agent** enables hospital personnel (Administrators,
 
 ---
 
-## 🛠️ Technology Stack
+## 🛠️ Complete Technology Stack
 
-| Layer | Component | Description |
-| :--- | :--- | :--- |
-| **Runtime & Language** | **Python 3.12** | Modern asynchronous Python runtime with strong type typing. |
-| **API Framework** | **FastAPI 0.115 + Uvicorn** | High-performance asynchronous REST API framework with Pydantic v2 schemas and automatic OpenAPI documentation. |
-| **Database Engine** | **PostgreSQL 17 (Alpine)** | Relational database with dual-user setup (`hms_admin` for schema/seeding, `hms_app` with `NOBYPASSRLS` for application queries). |
-| **Isolation & Security** | **Postgres Row-Level Security (RLS)** | Multi-tenant protection enforced directly inside PostgreSQL engine via `SET LOCAL app.hospital_id`. |
-| **Database Toolkit** | **SQLAlchemy 2.0 + psycopg3** | Parameterized query generation preventing SQL injection; connection pooling and transactional savepoints. |
-| **Agent Orchestrator** | **LangGraph (v1.2+)** | Deterministic `StateGraph` workflow routing state through typed nodes, conditional policy edges, and audit logger. |
-| **Retrieval System (RAG)** | **Tenant-Isolated Policy & Formulary RAG** | Scoped retrieval for Hospital SOPs, clinical guidelines, and drug formulary with strict `hospital_id` boundary checks. |
-| **Intelligence / LLM** | **Google Gemini 3.8 Flash** | Fast intent extraction using official `google-genai` SDK, backed by an offline heuristic parser with resilient fallback. |
-| **Authentication** | **PyJWT + Passlib PBKDF2** | Cryptographically signed JSON Web Tokens (HS256) encoding `user_id` and `hospital_id`. |
-| **Containerization** | **Docker & Docker Compose** | Multi-container setup with automated schema migration, healthchecks, and seed dataset generation. |
-| **Evaluation & Tests** | **Pytest + Eval Harness** | 31 unit & integration tests + 56-query ground-truth benchmark tracking intent accuracy, false-allow, and false-deny metrics. |
-| **User Interface** | **Glassmorphic Web UI** | Modern responsive chat interface with a real-time role switcher, blast-radius modal confirmation, and pending approval badge. |
+| Layer | Component | Version / Tech | Role & Architectural Guarantee |
+| :--- | :--- | :--- | :--- |
+| **Agent Orchestrator** | **LangGraph** | `v1.2.21` | **Deterministic `StateGraph` Workflow Engine:** Replaces black-box agent loops with a state machine where nodes execute typed tasks, conditional edges evaluate deterministic code policies, and all paths converge at an immutable audit logger. |
+| **Knowledge & Policy** | **Tenant-Isolated RAG** | In-Memory / Vector | **Hospital Guidelines & Clinical Formulary Retrieval:** Semantic search over Hospital SOPs (billing ceilings, batch thresholds) and drug formulary (Paracetamol dosage, Insulin cold chain 2–8°C) with strict `hospital_id` boundary checks. |
+| **Backend & API** | **FastAPI + Uvicorn** | `v0.115` / Python 3.12 | High-performance asynchronous REST API with Pydantic v2 schemas and automatic OpenAPI Swagger docs. |
+| **Database & Engine** | **PostgreSQL 17** | Alpine Linux | Dual-user setup (`hms_admin` for migrations/seed, `hms_app` with `NOBYPASSRLS` for all staff queries). |
+| **Tenant Isolation** | **Postgres Native RLS** | Engine-level | Multi-tenant defense-in-depth: every session executes `SET LOCAL app.hospital_id`, blocking cross-tenant queries at the database kernel. |
+| **Database Toolkit** | **SQLAlchemy + psycopg3** | SQLAlchemy 2.0 | Parameterized query execution preventing SQL injection; connection pooling and transactional savepoints for dry-runs. |
+| **Intent Extraction** | **Google Gemini 3.8 Flash** | `google-genai` SDK | Zero-privilege LLM intent extraction with an offline, regex-based fallback parser for high resilience. |
+| **Authentication** | **PyJWT + Passlib** | HS256 / PBKDF2 | Cryptographically signed session tokens encoding `user_id` and `hospital_id`. |
+| **Containerization** | **Docker & Docker Compose** | Multi-container | Orchestrates `hms_agent_db` (Postgres 17) and `hms_agent_web` (FastAPI) with automated schema & seed data mounting. |
+| **Testing & Benchmark** | **Pytest + Eval Harness** | Pytest 9.2 | 31 unit/integration tests + 56-query ground-truth benchmark tracking intent accuracy, false-allow, and false-deny metrics. |
+| **User Interface** | **Glassmorphic Web UI** | Vanilla JS / CSS3 | Modern dark-themed dashboard with real-time role switcher, blast-radius numeric input modal, and pending approvals panel. |
 
 ---
 
-## 🏛️ System Architecture
+## 🏛️ LangGraph StateGraph Architecture
+
+The entire operational flow is modeled as a compiled **LangGraph `StateGraph`** (`app/agent/graph.py`):
 
 ```mermaid
 flowchart TD
-    Client["Client: Web Chat UI / CLI / Swagger"] -->|"1. POST /chat {message}<br/>Header: Bearer JWT"| AuthMiddleware["Auth Layer: JWT Verification"]
-    AuthMiddleware -->|"Builds Principal from DB"| Principal["Principal Context (user_id, hospital_id, roles, perms)"]
+    Start([User Request + Verified JWT]) --> IntentOrRAG["Node 1: intent_or_retrieval<br/>Detects RAG question vs DB intent<br/>(LLM receives raw query ONLY)"]
     
-    subgraph AgentLayer["1. Agent Intent Layer (Zero Privilege)"]
-        DateEngine["Date Resolver (IST Asia/Kolkata)"] --> Parser["Gemini 3.8 Flash Parser / Heuristic Fallback"]
-        Parser -->|"Emits Typed Intent JSON (No User Identity)"| IntentObj["Typed Intent Object"]
-    end
+    IntentOrRAG -->|"RAG Question (SOP / Formulary)"| RAGNode["Node: retrieval_output<br/>Tenant-scoped SOP & Formulary search"]
+    IntentOrRAG -->|"DB Operation"| FactNode["Node 2: fact_resolution<br/>Pure Python: IST dates, row count, target entities"]
     
-    Client --> AgentLayer
+    FactNode --> PolicyNode["Node 3: policy_decision<br/>Deterministic code policy evaluation"]
     
-    subgraph PolicyEngine["2. Policy Enforcement Layer (Deterministic Code)"]
-        Principal --> GateKeeper["Deterministic Policy Rules"]
-        IntentObj --> GateKeeper
-        GateKeeper --> Rule1["1. Inactive User Check"]
-        Rule1 --> Rule2["2. Cross-Tenant Guard"]
-        Rule2 --> Rule3["3. Permission Matrix Check"]
-        Rule3 --> Rule4["4. Parameter Constraints (max_rows, max_discount)"]
-        Rule4 --> Rule5["5. Ambiguity Check (Clarify, Don't Guess)"]
-    end
+    PolicyNode --> Router{"Conditional Policy Edge"}
     
-    GateKeeper -->|"REFUSE"| ExitRefuse["Refusal Response (Reason Logged)"]
-    GateKeeper -->|"CLARIFY"| ExitClarify["Clarifying Question (Target/Action)"]
-    GateKeeper -->|"ALLOW (Read)"| ExecRead["ops_read.py (Parameterized & Scoped)"]
-    GateKeeper -->|"ALLOW_WITH_PREVIEW (Write)"| DryRun["dryrun.py (Savepoint Rollback Preview)"]
+    Router -->|"REFUSE"| RefuseNode["Node: refuse_node<br/>Refusal reason OR Approval routing (#REQ-xxx)"]
+    Router -->|"CLARIFY"| ClarifyNode["Node: clarify_node<br/>Ambiguous name/permission question"]
+    Router -->|"ALLOW_WITH_PREVIEW"| DryRunNode["Node: dry_run_preview_node<br/>Savepoint dry run, ₹ impact, confirm token"]
+    Router -->|"ALLOW (Read)"| ReadNode["Node: read_execution_node<br/>Hospital-scoped read with Postgres RLS"]
+    Router -->|"ALLOW (Undo)"| UndoNode["Node: undo_node<br/>Atomic restore with concurrency check"]
+    Router -->|"ALLOW (Approval)"| ApprovalNode["Node: approval_node<br/>Admin list/approve/reject"]
     
-    subgraph ExecLayer["3. Execution & Storage Layer"]
-        ExecRead --> PostgreSQL[("PostgreSQL 17 Database<br/>RLS Enabled + SET LOCAL app.hospital_id")]
-        DryRun -->|"Issues Pending Token"| PendingStore[("pending_actions Table")]
-        ConfirmReq["POST /confirm {token, typed_count}"] --> ConfirmExec["confirm.py (Atomic Commit)"]
-        ConfirmExec --> PostgreSQL
-    end
+    RAGNode --> AuditLogger["Terminal Node: audit_logger<br/>Guaranteed immutable audit log in PostgreSQL"]
+    RefuseNode --> AuditLogger
+    ClarifyNode --> AuditLogger
+    DryRunNode --> AuditLogger
+    ReadNode --> AuditLogger
+    UndoNode --> AuditLogger
+    ApprovalNode --> AuditLogger
     
-    subgraph AuditLayer["4. Immutable Audit Trail"]
-        AuditRecord["audit.py: record_audit() in finally block"]
-        AuditLog[("audit_logs Table (1 row per attempt)")]
-        AuditRecord --> AuditLog
-    end
+    AuditLogger --> EndNode([HTTP Response])
 ```
+
+---
+
+## 🧠 LangGraph & Retrieval Deep Dive
+
+### 1. LangGraph State Machine (`app/agent/graph.py`)
+- **`AgentGraphState`**: A strongly typed schema holding the user's verified `Principal`, the extracted `Intent`, resolved `facts`, and policy `decision`.
+- **Identity Isolation**: The LLM prompt is executed strictly inside `intent_or_retrieval_node`. It receives only `state["raw_query"]`. Identity, roles, and permissions are never exposed to the model.
+- **Terminal Audit Node**: All conditional branches (Reads, Previews, Refusals, Approvals, and SOP lookups) route directly into `audit_logger` before ending, ensuring 100% compliance auditing.
+
+### 2. Tenant-Aware Knowledge Retrieval (RAG) (`app/agent/retriever.py`)
+The system integrates an operational knowledge base for hospital personnel:
+- **Hospital SOPs:**
+  - *Billing & Discount Policy (`SOP-BILL-001`):* Front desk (0%), Billing Manager (up to 10%), >10% triggers `#REQ-xxx` approval routing.
+  - *Pharmacy Inventory Protocol (`SOP-PHARM-002`):* Low-stock alert (<10 units), 30-day expiry window, 500-row pharmacist cap.
+  - *Tenant Isolation & Security Policy (`SOP-SEC-003`):* Cross-hospital prohibition, self-lockout prevention, privilege escalation guards.
+- **Clinical Drug Formulary:**
+  - *Paracetamol (`MED-FORM-004`):* Indications, pediatric dosage, hepatotoxicity warnings, storage (<25°C).
+  - *Insulin & Cold Chain (`MED-FORM-005`):* Mandatory 2°C to 8°C refrigeration, disposal of frozen batches.
+- **Tenant Isolation Guarantee:**
+  - Documents carry an optional `hospital_id`. Hospital A staff can access global SOPs and Hospital A SOPs, but are strictly barred from retrieving Hospital B's internal procedures.
 
 ---
 
@@ -100,7 +114,7 @@ Every hard requirement has been strictly designed, implemented, and verified in 
 | **4** | **Dry Run Before Every Write** | Write operations first execute within an isolated transaction savepoint, calculating affected rows, ₹ financial impact, and 5 before/after sample rows, followed by immediate rollback. A confirmation token (5-min TTL) is returned. | [`app/execution/dryrun.py`](file:///c:/Users/CH%20SANDEEP/OneDrive/Documents/Hexgan%20ai/app/execution/dryrun.py) | **Verified** |
 | **5** | **Blast-Radius Guard** | Any write operation affecting more than 50 rows blocks simple "yes" confirmation; the user is required to type the exact row count to proceed. | [`app/execution/confirm.py`](file:///c:/Users/CH%20SANDEEP/OneDrive/Documents/Hexgan%20ai/app/execution/confirm.py) | **Verified** |
 | **6** | **Atomic Execution** | Confirmed mutations execute inside an atomic database transaction. Any failure halfway triggers an immediate rollback, leaving zero partial state. | [`app/execution/confirm.py`](file:///c:/Users/CH%20SANDEEP/OneDrive/Documents/Hexgan%20ai/app/execution/confirm.py) | **Verified** |
-| **7** | **Audit Everything** | Every attempt (allowed, refused, clarified, or errored) writes a record to `audit_logs` in a `finally` block with raw query, parsed intent, decision, and reason. | [`app/audit.py`](file:///c:/Users/CH%20SANDEEP/OneDrive/Documents/Hexgan%20ai/app/audit.py) | **Verified** |
+| **7** | **Audit Everything** | Every attempt (allowed, refused, clarified, or errored) writes a record to `audit_logs` via the terminal LangGraph node with raw query, parsed intent, decision, and reason. | [`app/audit.py`](file:///c:/Users/CH%20SANDEEP/OneDrive/Documents/Hexgan%20ai/app/audit.py), [`app/agent/graph.py`](file:///c:/Users/CH%20SANDEEP/OneDrive/Documents/Hexgan%20ai/app/agent/graph.py) | **Verified** |
 | **8** | **Clarify, Don't Guess** | Ambiguous entities (e.g., multiple staff members sharing a name like "Ravi") or ambiguous actions ("give access" without specifying role) return an explicit clarifying question instead of executing. | [`app/policy/rules.py`](file:///c:/Users/CH%20SANDEEP/OneDrive/Documents/Hexgan%20ai/app/policy/rules.py) | **Verified** |
 | **9** | **Dates in IST (Asia/Kolkata)** | Relative date expressions ("last month", "today", "this week") resolve against the `Asia/Kolkata` timezone with exact dates reflected in preview data. | [`app/agent/dates.py`](file:///c:/Users/CH%20SANDEEP/OneDrive/Documents/Hexgan%20ai/app/agent/dates.py) | **Verified** |
 
@@ -154,7 +168,7 @@ Run the entire application stack (Postgres 17 DB + Auto-seeded Data + FastAPI Ag
 docker compose up -d --build
 ```
 
-1. **Wait for containers to become healthy:**
+1. **Check container status:**
    ```bash
    docker compose ps
    ```
@@ -179,49 +193,21 @@ docker compose up -d --build
 
 ### Method 2: Local Python Environment
 
-#### 1. Prerequisites
-- Python 3.12+
-- PostgreSQL 15+ (local or Supabase)
-
-#### 2. Setup Virtual Environment
 ```bash
+# 1. Create and activate virtual environment
 python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Windows
-.venv\Scripts\activate
-
-# macOS / Linux
-source .venv/bin/activate
-
+# 2. Install dependencies (including LangGraph & LangChain Core)
 pip install -r requirements.txt
-```
 
-#### 3. Environment Variables
-Copy `.env.example` to `.env` and configure your database URLs:
-```env
-# Database Connections
-ADMIN_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/hms_db
-DATABASE_URL=postgresql://hms_app:hms_app_password@localhost:5432/hms_db
+# 3. Configure environment
+cp .env.example .env
 
-# Security & Auth
-JWT_SECRET=supersecretjwtkey_replace_in_production_min_32_chars
-
-# LLM (Optional: Heuristic fallback operates automatically if omitted)
-GEMINI_API_KEY=your_gemini_api_key_here
-```
-
-#### 4. Seed the Database
-```bash
+# 4. Seed database
 python -m seed.seed
-```
-This populates:
-- 2 Hospitals (Hospital A & Hospital B)
-- 16 Users across all roles (Admin, Billing, Pharmacy, Front Desk, Doctor)
-- 1,300+ Inventory items with critical and expired stock
-- 1,100+ Patient bills
 
-#### 5. Start the Server
-```bash
+# 5. Run FastAPI server
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
@@ -258,12 +244,19 @@ curl -X POST http://localhost:8000/login \
 ```
 
 ### 2. `POST /chat`
-Submit a natural language operation instruction.
+Submit a natural language operation or policy query.
 ```bash
+# Database query
 curl -X POST http://localhost:8000/chat \
   -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"message": "Show low stock medicines"}'
+
+# Policy / SOP retrieval query
+curl -X POST http://localhost:8000/chat \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What is the discount policy?"}'
 ```
 
 ### 3. `POST /confirm`
@@ -291,7 +284,7 @@ curl -X POST http://localhost:8000/cancel \
 ```
 .
 ├── app/
-│   ├── agent/                 # LangGraph orchestration, RAG retrieval & LLM parsing
+│   ├── agent/                 # LangGraph state machine & RAG retrieval
 │   │   ├── dates.py           # Asia/Kolkata date resolution
 │   │   ├── graph.py           # LangGraph StateGraph workflow engine
 │   │   ├── parser.py          # Gemini 3.8 Flash + Resilient fallback parser
@@ -325,7 +318,7 @@ curl -X POST http://localhost:8000/cancel \
 ├── tests/                     # 31 Pytest automated test cases
 ├── docker-compose.yml         # Container composition (web + db)
 ├── Dockerfile                 # Python 3.12-slim production container
-├── requirements.txt           # Python dependencies
+├── requirements.txt           # Python dependencies (includes LangGraph)
 └── README.md                  # System documentation
 ```
 
@@ -334,5 +327,5 @@ curl -X POST http://localhost:8000/cancel \
 ## 🔒 Security & Privacy Commitments
 
 - **No Prompt Injection Vulnerabilities:** Because authorization and SQL generation are executed in code rather than prompts, prompt injection cannot grant elevated privileges or bypass tenant filters.
-- **Tenant Isolation:** Cross-tenant access is structurally prevented by both application queries (`WHERE hospital_id = ?`) and PostgreSQL Row-Level Security (`RLS`).
-- **Complete Audit Trail:** Every transaction attempt—including policy refusals—is committed to PostgreSQL with timestamps, user IDs, and raw text.
+- **Tenant Isolation:** Cross-tenant access is structurally prevented by application queries (`WHERE hospital_id = ?`), PostgreSQL Row-Level Security (`RLS`), and metadata filtering in the RAG retrieval engine.
+- **Complete Audit Trail:** Every transaction attempt—including policy refusals and SOP lookups—is committed to PostgreSQL with timestamps, user IDs, and raw text.
