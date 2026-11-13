@@ -33,6 +33,8 @@ The **Hextgen HMS Operations Agent** enables hospital personnel (Administrators,
 | **Database Engine** | **PostgreSQL 17 (Alpine)** | Relational database with dual-user setup (`hms_admin` for schema/seeding, `hms_app` with `NOBYPASSRLS` for application queries). |
 | **Isolation & Security** | **Postgres Row-Level Security (RLS)** | Multi-tenant protection enforced directly inside PostgreSQL engine via `SET LOCAL app.hospital_id`. |
 | **Database Toolkit** | **SQLAlchemy 2.0 + psycopg3** | Parameterized query generation preventing SQL injection; connection pooling and transactional savepoints. |
+| **Agent Orchestrator** | **LangGraph (v1.2+)** | Deterministic `StateGraph` workflow routing state through typed nodes, conditional policy edges, and audit logger. |
+| **Retrieval System (RAG)** | **Tenant-Isolated Policy & Formulary RAG** | Scoped retrieval for Hospital SOPs, clinical guidelines, and drug formulary with strict `hospital_id` boundary checks. |
 | **Intelligence / LLM** | **Google Gemini 3.8 Flash** | Fast intent extraction using official `google-genai` SDK, backed by an offline heuristic parser with resilient fallback. |
 | **Authentication** | **PyJWT + Passlib PBKDF2** | Cryptographically signed JSON Web Tokens (HS256) encoding `user_id` and `hospital_id`. |
 | **Containerization** | **Docker & Docker Compose** | Multi-container setup with automated schema migration, healthchecks, and seed dataset generation. |
@@ -289,10 +291,12 @@ curl -X POST http://localhost:8000/cancel \
 ```
 .
 ├── app/
-│   ├── agent/                 # LLM intent parsing & IST date calculations
+│   ├── agent/                 # LangGraph orchestration, RAG retrieval & LLM parsing
 │   │   ├── dates.py           # Asia/Kolkata date resolution
+│   │   ├── graph.py           # LangGraph StateGraph workflow engine
 │   │   ├── parser.py          # Gemini 3.8 Flash + Resilient fallback parser
-│   │   └── prompts.py         # Zero-identity LLM extraction prompt
+│   │   ├── prompts.py         # Zero-identity LLM extraction prompt
+│   │   └── retriever.py       # Tenant-isolated Hospital SOP & Formulary RAG
 │   ├── execution/             # Deterministic database operations
 │   │   ├── confirm.py         # Atomic write commit + blast-radius checks
 │   │   ├── dryrun.py          # Savepoint dry-run & financial impact preview

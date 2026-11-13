@@ -51,6 +51,7 @@ from app.execution.ops_approval import (
 )
 from app.schemas import UndoIntent, ApprovalIntent
 from app.audit import record_audit
+from app.agent.graph import execute_agent_graph
 
 app = FastAPI(
     title="HMS Permission-Aware Operations Agent API",
@@ -90,225 +91,20 @@ def chat_endpoint(
     db: Session = Depends(get_db),
 ):
     """
-    Main agent chat endpoint.
+    Main agent chat endpoint orchestrated by LangGraph StateGraph workflow.
     Guarantees:
     - LLM only proposes an intent (identity never passed to or trusted from LLM)
-    - Code gathers facts and policy engine decides
-    - Audit log recorded in finally block for all exits
+    - Code gathers facts and deterministic policy engine decides
+    - Audit log recorded in terminal graph node for 100% of exits
+    - Multi-tenant isolated retrieval system for hospital SOPs and drug formulary
     """
-    raw_query = req.message
-    parsed_intent = None
-    decision_type = "REFUSE"
-    decision_reason = "Processing error"
-    status_code_audit = "error"
-    rows_affected = 0
-    preview_data = None
-
-    try:
-        ensure_tenant_context(db, principal.hospital_id)
-
-        # 1. LLM Intent parsing (LLM NEVER receives user id, role, or hospital id)
-        parsed_intent = parser.parse_intent(raw_query)
-
-        # 2. Fact Resolution in code
-        facts: Dict[str, Any] = {}
-        intent_type = getattr(parsed_intent, "type", "")
-
-        # Check for cross-tenant mention in query
-        q_lower = raw_query.lower()
-        if principal.hospital_id == 1 and ("hospital b" in q_lower or "hosp b" in q_lower):
-            facts["mentions_other_hospital"] = True
-        elif principal.hospital_id == 2 and ("hospital a" in q_lower or "hosp a" in q_lower):
-            facts["mentions_other_hospital"] = True
-
-        # Pre-count affected rows for inventory update (needed for pharmacist row cap check)
-        if intent_type == "inventory_bulk_update":
-            scope = getattr(parsed_intent, "scope", "all")
-            cnt_query = select(func.count(InventoryItem.id)).where(
-                InventoryItem.hospital_id == principal.hospital_id
-            )
-            if scope == "category" and getattr(parsed_intent, "category", None):
-                cnt_query = cnt_query.where(
-                    InventoryItem.category.ilike(f"%{parsed_intent.category.strip()}%")
-                )
-            elif scope == "name_contains" and getattr(parsed_intent, "name_contains", None):
-                cnt_query = cnt_query.where(
-                    InventoryItem.name.ilike(f"%{parsed_intent.name_contains.strip()}%")
-                )
-            count_val = db.execute(cnt_query).scalar() or 0
-            facts["affected_rows_count"] = count_val
-
-        # Resolve target users in principal's hospital for access change
-        if intent_type == "access_change":
-            target_name = getattr(parsed_intent, "target_user_name", "")
-            if target_name.lower() in ("me", "myself", "my"):
-                facts["target_user_id"] = principal.user_id
-            else:
-                matching_users = db.execute(
-                    select(User).where(
-                        and_(
-                            User.hospital_id == principal.hospital_id,
-                            User.name.ilike(f"%{target_name.strip()}%"),
-                        )
-                    )
-                ).scalars().all()
-                facts["target_users"] = [{"id": u.id, "name": u.name} for u in matching_users]
-                if len(matching_users) == 0:
-                    facts["user_not_found"] = True
-                elif len(matching_users) > 1:
-                    facts["ambiguous_target"] = True
-                else:
-                    facts["target_user_id"] = matching_users[0].id
-
-        # 3. Pure Policy Decision
-        decision = decide(principal=principal, intent=parsed_intent, facts=facts)
-        decision_type = str(decision.decision.value)
-        decision_reason = decision.reason
-
-        # 4. Route based on Policy Decision
-        if decision.decision == DecisionType.REFUSE:
-            if (facts.get("route_approval") or (intent_type == "bills_discount" and "Billing manager" in principal.roles)):
-                appr_res = create_approval_request(
-                    principal=principal,
-                    requested_intent_data=parsed_intent.model_dump(),
-                    reason=f"Discount of {getattr(parsed_intent, 'pct', 0)}% exceeds role ceiling.",
-                    session=db,
-                )
-                status_code_audit = "refused"
-                msg_txt = f"Request exceeds role ceiling. It has been routed to Admin for review as #{appr_res['request_id']}."
-                return {
-                    "exit": "refuse",
-                    "decision": "REFUSE",
-                    "reason": msg_txt,
-                    "answer": msg_txt,
-                    "approval": appr_res,
-                }
-
-            status_code_audit = "refused"
-            return {
-                "exit": "refuse",
-                "decision": "REFUSE",
-                "reason": decision.reason,
-                "offered_alternative": decision.offered_alternative,
-            }
-
-        elif decision.decision == DecisionType.CLARIFY:
-            status_code_audit = "clarify"
-            return {
-                "exit": "clarify",
-                "decision": "CLARIFY",
-                "question": decision.reason,
-            }
-
-        elif decision.decision == DecisionType.ALLOW_WITH_PREVIEW:
-            # Phase 1: Dry run preview with confirmation token
-            preview_data = generate_dryrun_preview(
-                principal=principal,
-                intent=parsed_intent,
-                session=db,
-            )
-            rows_affected = preview_data.get("rows_affected", 0)
-            status_code_audit = "previewed"
-            return {
-                "exit": "preview",
-                "decision": "ALLOW_WITH_PREVIEW",
-                "message": decision.reason,
-                "preview": preview_data,
-            }
-
-        else:
-            # DecisionType.ALLOW (Read operations)
-            status_code_audit = "answered"
-            if intent_type == "inventory_read":
-                items = inventory_read_op(principal, parsed_intent, db)
-                summary_text = format_inventory_summary(items)
-                return {
-                    "exit": "answer",
-                    "decision": "ALLOW",
-                    "answer": summary_text,
-                    "count": len(items),
-                    "items": items[:25],
-                }
-
-            elif intent_type == "bills_read":
-                bills = bills_read_op(principal, parsed_intent, db, decision.applied_filters)
-                summary_text = format_bills_summary(bills)
-                return {
-                    "exit": "answer",
-                    "decision": "ALLOW",
-                    "answer": summary_text,
-                    "count": len(bills),
-                    "bills": bills[:25],
-                }
-
-            elif intent_type == "users_read":
-                users = users_read_op(principal, parsed_intent, db)
-                return {
-                    "exit": "answer",
-                    "decision": "ALLOW",
-                    "users": users,
-                }
-
-            elif intent_type == "undo":
-                undo_res = undo_last_change_op(principal, db)
-                status_code_audit = "executed" if undo_res.get("success") else "refused"
-                rows_affected = undo_res.get("rows_affected", 0)
-                before_snap = undo_res.get("before_snapshot")
-                after_snap = undo_res.get("after_snapshot")
-                return {
-                    "exit": "answer" if undo_res.get("success") else "refuse",
-                    "decision": "ALLOW" if undo_res.get("success") else "REFUSE",
-                    "answer": undo_res.get("message"),
-                    "reason": undo_res.get("message"),
-                    "details": undo_res,
-                }
-
-            elif intent_type == "approval":
-                action = getattr(parsed_intent, "action", "list")
-                if action == "list":
-                    appr_res = list_pending_approvals(principal, db)
-                    status_code_audit = "answered"
-                    return {
-                        "exit": "answer",
-                        "decision": "ALLOW",
-                        "answer": appr_res.get("message"),
-                        "requests": appr_res.get("requests", []),
-                        "count": appr_res.get("count", 0),
-                    }
-                elif action in ("approve", "reject"):
-                    req_id = getattr(parsed_intent, "request_id", "") or "1"
-                    exec_res = execute_admin_approval(principal, req_id, action, db)
-                    status_code_audit = "executed" if exec_res.get("success") else "refused"
-                    rows_affected = exec_res.get("rows_affected", 0)
-                    before_snap = exec_res.get("before_snapshot")
-                    after_snap = exec_res.get("after_snapshot")
-                    return {
-                        "exit": "answer" if exec_res.get("success") else "refuse",
-                        "decision": "ALLOW" if exec_res.get("success") else "REFUSE",
-                        "answer": exec_res.get("message"),
-                        "reason": exec_res.get("message"),
-                        "details": exec_res,
-                    }
-
-            return {
-                "exit": "answer",
-                "decision": "ALLOW",
-                "answer": "Operation executed successfully.",
-            }
-
-    finally:
-        # Every request path writes exactly one audit_log row
-        record_audit(
-            hospital_id=principal.hospital_id,
-            user_id=principal.user_id,
-            raw_query=raw_query,
-            parsed_intent=parsed_intent,
-            decision=decision_type,
-            reason=decision_reason,
-            status=status_code_audit,
-            rows_affected=rows_affected,
-            session=db,
-        )
+    ensure_tenant_context(db, principal.hospital_id)
+    return execute_agent_graph(
+        raw_query=req.message,
+        principal=principal,
+        parser=parser,
+        db=db,
+    )
 
 
 @app.post("/confirm")
