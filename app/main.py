@@ -83,6 +83,20 @@ def health_check():
     return {"status": "ok"}
 
 
+@app.get("/audit/verify")
+def verify_audit_ledger_endpoint(
+    principal: Principal = Depends(get_current_principal),
+    db: Session = Depends(get_db),
+):
+    """
+    Cryptographically verifies the hospital audit trail hash chain.
+    Ensures mathematical tamper-evidence and compliance with healthcare audit standards (HIPAA/NABH).
+    """
+    from app.audit import verify_audit_ledger
+    ensure_tenant_context(db, principal.hospital_id)
+    return verify_audit_ledger(db, hospital_id=principal.hospital_id)
+
+
 @app.post("/chat")
 def chat_endpoint(
     req: ChatRequest,
@@ -406,7 +420,8 @@ HTML_CONTENT = r"""<!DOCTYPE html>
     <div class="sidebar-actions">
       <button class="side-btn" onclick="runPrompt('Undo my last change')">↩️ Undo Change</button>
       <button class="side-btn" onclick="runPrompt('Show pending approvals')">📋 Approvals</button>
-      <button class="side-btn side-btn-full" onclick="clearChat()">🧹 Clear Conversation</button>
+      <button class="side-btn" onclick="verifyLedger()">🔐 Verify Ledger</button>
+      <button class="side-btn" onclick="clearChat()">🧹 Clear Chat</button>
     </div>
 
     <!-- Real-time Live Audit Stream -->
@@ -659,6 +674,12 @@ async function sendQuery() {
     });
     const data = await res.json();
 
+    if (data.privacy_audit && data.privacy_audit.phi_deidentified) {
+      addBotMsg(`<div style="font-size:11px;color:#0284c7;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:6px 10px;margin-bottom:8px;">
+        🛡️ <strong>HIPAA Privacy Safe Harbor:</strong> Sensitive PHI/PII (${escapeHtml((data.privacy_audit.masked_types||[]).join(', '))}) was automatically de-identified before model processing.
+      </div>`);
+    }
+
     if (data.exit === 'refuse') {
       logAudit('QUERY REFUSED', data.reason, 'refused');
       let html = `<div class="status-card card-refuse">
@@ -841,6 +862,35 @@ async function cancelAction() {
 function escapeHtml(text) {
   const map = {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;'};
   return (text || '').replace(/[&<>"']/g, m => map[m]);
+}
+
+async function verifyLedger() {
+  addBotMsg('<em>🔐 Running cryptographic SHA-256 verification of the hospital audit ledger...</em>');
+  try {
+    const res = await fetch('/audit/verify', {
+      headers: {'Authorization': 'Bearer ' + token}
+    });
+    const data = await res.json();
+    if (data.valid) {
+      logAudit('LEDGER VERIFIED', `${data.cryptographically_verified_entries || 0} hashes verified`, 'executed');
+      addBotMsg(`<div class="status-card" style="background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;">
+        <h4>🛡️ CRYPTOGRAPHIC AUDIT LEDGER VERIFIED</h4>
+        <p><strong>Status:</strong> Mathematical Hash Chain Intact (Zero Tampering Detected)</p>
+        <p><strong>Verified Records:</strong> ${data.cryptographically_verified_entries || 0} / ${data.total_entries || 0}</p>
+        <p><strong>Chain Head Hash:</strong> <code>${escapeHtml((data.chain_head_hash || '').substring(0, 24))}...</code></p>
+      </div>`);
+    } else {
+      logAudit('LEDGER TAMPERED', data.error || 'Tampering detected', 'refused');
+      addBotMsg(`<div class="status-card card-refuse">
+        <h4>🚨 TAMPERING DETECTED IN AUDIT LEDGER</h4>
+        <p><strong>Error:</strong> ${escapeHtml(data.error)}</p>
+        <p><strong>Corrupted Record:</strong> Entry #${data.tampered_entry_id}</p>
+        <p>${escapeHtml(data.message)}</p>
+      </div>`);
+    }
+  } catch (err) {
+    addBotMsg('<div class="status-card card-refuse"><p>Failed to verify ledger: ' + escapeHtml(err.message) + '</p></div>');
+  }
 }
 
 window.onload = switchUser;

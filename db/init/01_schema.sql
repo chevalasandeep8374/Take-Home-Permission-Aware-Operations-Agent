@@ -152,6 +152,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
     rows_affected INTEGER NOT NULL DEFAULT 0,
     before_snapshot JSONB,
     after_snapshot JSONB,
+    prev_hash VARCHAR(64),
+    entry_hash VARCHAR(64),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

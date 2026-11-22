@@ -5,7 +5,7 @@
     "policy_accuracy_pct": 100.0,
     "false_allow_rate_pct": 0.0,
     "false_deny_rate_pct": 0.0,
-    "elapsed_seconds": 0.79
+    "elapsed_seconds": 22.99
   },
   "category_stats": {
     "inventory_read": {

@@ -28,6 +28,7 @@ from app.agent.retriever import (
     retrieve_hospital_guidelines,
     format_retrieval_response,
 )
+from app.agent.redactor import PHIRedactor
 from app.policy.engine import decide
 from app.policy.rules import DecisionType
 from app.execution.ops_read import (
@@ -71,6 +72,10 @@ class AgentGraphState(TypedDict):
     rows_affected: int
     preview_data: Optional[Dict[str, Any]]
     final_response: Dict[str, Any]
+    phi_redacted_query: str
+    phi_token_map: Dict[str, str]
+    phi_detected_types: List[str]
+    phi_is_redacted: bool
 
 
 # =============================================================================
@@ -79,13 +84,19 @@ class AgentGraphState(TypedDict):
 
 def intent_or_retrieval_node(state: AgentGraphState) -> Dict[str, Any]:
     """
-    Node 1: Intent Extraction & Knowledge Retrieval Gate.
+    Node 1: Intent Extraction & Knowledge Retrieval Gate with Pre-LLM PHI Redaction.
+    - Zero-leakage: masks PHI/PII before any LLM prompt touches it.
     - If inquiry is asking for hospital SOPs, rules, or formulary, retrieves tenant-scoped docs.
-    - Otherwise, LLM parses query into typed Intent schema. (LLM receives raw_query ONLY).
+    - Otherwise, LLM parses query into typed Intent schema using sanitized prompt.
+    - Post-processing restores real entity names locally in Python memory.
     """
     raw_query = state["raw_query"]
     principal = state["principal"]
     parser = state["parser"]
+
+    # Pre-LLM PHI/PII redaction
+    redaction = PHIRedactor.redact(raw_query)
+    safe_query = redaction.redacted_text
 
     # 1. Check for Retrieval (RAG) query
     if is_retrieval_query(raw_query):
@@ -94,14 +105,27 @@ def intent_or_retrieval_node(state: AgentGraphState) -> Dict[str, Any]:
             "is_retrieval": True,
             "retrieved_docs": docs,
             "parsed_intent": None,
+            "phi_redacted_query": safe_query,
+            "phi_token_map": redaction.token_map,
+            "phi_detected_types": redaction.detected_types,
+            "phi_is_redacted": redaction.is_redacted,
         }
 
-    # 2. Parse operational intent (Zero-privilege: prompt never sees user identity)
-    parsed = parser.parse_intent(raw_query)
+    # 2. Parse operational intent (Zero-privilege: prompt never sees user identity + Zero-leakage)
+    parsed = parser.parse_intent(safe_query)
+
+    # 3. Restore sensitive entities locally in Python memory
+    if parsed and redaction.is_redacted:
+        parsed = PHIRedactor.restore_object(parsed, redaction.token_map)
+
     return {
         "is_retrieval": False,
         "retrieved_docs": [],
         "parsed_intent": parsed,
+        "phi_redacted_query": safe_query,
+        "phi_token_map": redaction.token_map,
+        "phi_detected_types": redaction.detected_types,
+        "phi_is_redacted": redaction.is_redacted,
     }
 
 
@@ -576,7 +600,17 @@ def execute_agent_graph(
             "decision": "REFUSE",
             "reason": "Execution error",
         },
+        "phi_redacted_query": raw_query,
+        "phi_token_map": {},
+        "phi_detected_types": [],
+        "phi_is_redacted": False,
     }
 
     output_state = hms_agent_graph.invoke(initial_state)
-    return output_state.get("final_response", {})
+    res = output_state.get("final_response", {})
+    if output_state.get("phi_is_redacted"):
+        res["privacy_audit"] = {
+            "phi_deidentified": True,
+            "masked_types": output_state.get("phi_detected_types", []),
+        }
+    return res

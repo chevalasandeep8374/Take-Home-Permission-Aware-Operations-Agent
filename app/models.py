@@ -192,6 +192,8 @@ class AuditLog(Base):
     rows_affected = Column(Integer, nullable=False, default=0)
     before_snapshot = Column(JSONB, nullable=True)
     after_snapshot = Column(JSONB, nullable=True)
+    prev_hash = Column(String(64), nullable=True)
+    entry_hash = Column(String(64), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     hospital = relationship("Hospital", back_populates="audit_logs")
